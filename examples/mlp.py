@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import numpy as np
 import mnist_reader
 from jdl import Tensor
-from jdl.nn import Layer, Model
+from jdl.nn import Model, ADAM
 
 def sgd_batches(X, y, batch_size=50):
     N = X.data.shape[0]
@@ -35,14 +35,16 @@ x_train, y_train = wrap_samples(*mnist_reader.load_mnist('datasets/fashion', kin
 x_test, y_test = wrap_samples(*mnist_reader.load_mnist('datasets/fashion', kind='t10k'))
 
 model = Model(784, 10, cross_entropy_loss, Tensor.softmax, layers=[256])
+optimizer = ADAM(model.params())
 
 # training
 for epoch in range(500):
     total_loss = 0.0
     for x, y in sgd_batches(x_train, y_train ,batch_size=200):
-        model.zero_grads()
+        optimizer.zero()
         pred = model.forward(x)
         total_loss += model.backward(pred, y).data
+        optimizer.step()
     if epoch % 10 == 0: print(f"Epoch: {epoch}\tloss={total_loss}")
 
 # test generalization

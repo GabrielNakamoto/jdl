@@ -39,7 +39,7 @@ def carPriceDataset():
         ('num', StandardScaler(), num_cols),
         ('cat', OneHotEncoder(handle_unknown='ignore'), cat_cols)
     ], sparse_threshold=0)
-    df = pd.read_csv("CarPrice_Assignment.csv")
+    df = pd.read_csv("datasets/CarPrice_Assignment.csv")
 
     y_raw = df['price'].to_numpy().reshape(-1, 1)
     df = df.drop('price', axis=1)

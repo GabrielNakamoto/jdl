@@ -16,6 +16,18 @@ class Tensor:
     def zero_grad(self):
         if self.grad is not None: self.grad.fill(0)
 
+    def one_hot(self, classes):
+        samples, = self.shape
+        hot = np.zeros((samples,classes))
+        hot[np.arange(samples), self.data.astype(dtype=np.int32)]=1
+        self.data = hot
+        return self
+    
+    # https://jmlr.org/papers/v15/srivastava14a.html
+    def dropout(self, p=0.5):
+        mask = (np.random.uniform(size=self.shape) > p).astype(np.float32) / (1.0 - p)
+        return Tensor(self.data * mask, parents=(self,), local_grads=(lambda g: g * mask,))
+
     def __pow__(self, scalar):
         cached = self.data ** (scalar-1)
         return Tensor(cached*self.data, parents=(self,), local_grads=(lambda g: g*scalar*cached,))

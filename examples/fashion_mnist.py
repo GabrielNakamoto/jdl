@@ -17,18 +17,12 @@ def sgd_batches(X, y, batch_size=50):
         j = indices[i:i+batch_size]
         yield Tensor(X.data.take(j, axis=0)), Tensor(y.data.take(j, axis=0))
 
-def from_1hot(y, classes):
-    samples, = y.shape
-    ny = np.zeros((samples, classes))
-    ny[np.arange(samples), y]=1
-    return ny
-
 def cross_entropy_loss(pred, y):
     return -(y * pred.log()).sum(axis=1).mean()
 
 def wrap_samples(x, y):
     x = Tensor(x.reshape(-1, 28, 28) / 255.0)
-    y = Tensor(from_1hot(y, 10))
+    y = Tensor(y).one_hot(10)
     return (x, y)
 
 x_train, y_train = wrap_samples(*mnist_reader.load_mnist('datasets/fashion', kind='train'))
@@ -42,7 +36,7 @@ for epoch in range(200):
     total_loss = 0.0
     for x, y in sgd_batches(x_train, y_train, batch_size=200):
         optimizer.zero()
-        pred = model.forward(x)
+        pred = model.forward(x, dropout_p=0.5)
         total_loss += model.backward(pred, y).data
         optimizer.step()
     if epoch % 10 == 0: print(f"Epoch: {epoch}\tloss={total_loss}")

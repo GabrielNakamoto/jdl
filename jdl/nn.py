@@ -27,9 +27,11 @@ class Model:
         params = []
         for l in self.layers: params.extend((l.W,l.b))
         return params
-    def forward(self, x):
+    def forward(self, x, dropout_p=None):
         logits = x
-        for l in self.layers[:-1]: logits = self.activation(l.forward(logits))
+        for l in self.layers[:-1]:
+            logits = self.activation(l.forward(logits))
+            if dropout_p: logits = logits.dropout(dropout_p)
         return self.final(self.layers[-1].forward(logits))
     def backward(self, pred, y):
         loss = self.loss(pred, y)

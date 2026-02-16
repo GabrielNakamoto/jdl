@@ -6,11 +6,12 @@ class Tensor:
     def __init__(self, data: Union[np.ndarray, list], parents=(), requires_grad=True, local_grads=()):
         if isinstance(data, list): data = np.array(data, dtype=np.float32)
         if isinstance(data, np.ndarray): data = data.astype(np.float32, copy=False)
-        self.requires_grad = requires_grad
         self.data = data
-        self.parents = parents
         self.grad = None
-        self.local_grads = local_grads
+
+        self._requires_grad = requires_grad
+        self._parents = parents
+        self._local_grads = local_grads
 
     def zero_grad(self):
         if self.grad is not None: self.grad.fill(0)
@@ -18,7 +19,9 @@ class Tensor:
     def __pow__(self, scalar):
         cached = self.data ** (scalar-1)
         return Tensor(cached*self.data, parents=(self,), local_grads=(lambda g: g*scalar*cached,))
-    def log(self): return Tensor(np.log(self.data), parents=(self,), local_grads=(lambda g: g/self.data,))
+    def log(self):
+        clamped = np.clip(self.data, 1e-12, None)
+        return Tensor(np.log(clamped), parents=(self,), local_grads=(lambda g: g/clamped,))
     def exp(self):
         cached = np.exp(self.data)
         return Tensor(cached, parents=(self,), local_grads=(lambda g: g*cached,))
@@ -26,11 +29,9 @@ class Tensor:
     def __add__(self, other): return Tensor(self.data + other.data, parents=(self, other), local_grads=(lambda g:g, lambda g:g))
     def __sub__(self, other): return Tensor(self.data - other.data, parents=(self,other), local_grads=(lambda g:g, lambda g:-g))
     def __mul__(self, other: Union[Tensor, float]):
-        factor = other
-        parents = (self,)
-        if isinstance(other, Tensor):
-            factor = other.data
-            parents = (self,other)
+        ist = isinstance(other, Tensor)
+        factor = other if not ist else other.data
+        parents = (self,) if not ist else (self,other)
         return Tensor(self.data * factor, parents=parents, local_grads=(lambda g: g*factor, lambda g: g*self.data))
 
     def __matmul__(self, other): return Tensor(self.data @ other.data, parents=[self, other], local_grads=(lambda g: g @ other.data.T, lambda g: self.data.T @ g))
@@ -44,31 +45,46 @@ class Tensor:
     def reshape(self, shape): return Tensor(self.data.reshape(*shape), parents=(self,), local_grads=(lambda g: g.reshape(self.data.shape),))
     def mean(self): return Tensor(self.data.mean(), parents=(self,), local_grads=(lambda g: np.ones(self.data.shape) * g / self.data.size,))
 
-    def relu(self):
-        return Tensor(np.maximum(self.data, 0), parents=(self,), local_grads=(lambda g: g * np.where(self.data > 0, 1, 0),))
+    def relu(self): return Tensor(np.maximum(self.data, 0), parents=(self,), local_grads=(lambda g: g * np.where(self.data > 0, 1, 0),))
 
-    def softmax(self):
-        # subtract max to prevent overflow, softmax has shift invariance
-        shifted = self - Tensor(self.data.max(axis=1, keepdims=True))
-        e = shifted.exp()
+    def softmax(self):# subtract max to prevent overflow, softmax has shift invariance
+        e = (self - Tensor(self.data.max(axis=1, keepdims=True))).exp()
         return e / e.sum(axis=1)
 
     @property
     def shape(self): return self.data.shape
 
     def _toposort(self):
-        topo = []
-        visited = set()
+        topo, visited = [], set()
         def dfs(node):
-            if node in visited or not node.requires_grad: return
+            if node in visited or not node._requires_grad: return
             visited.add(node)
-            for n in node.parents: dfs(n)
+            for n in node._parents: dfs(n)
             topo.append(node)
         dfs(self)
         return topo
 
     def backward(self):
-        from . import engine
         topo = self._toposort()
         self.grad = np.ones_like(self.data)
-        for node in reversed(topo): engine.compute_grad(node)    
+        for node in reversed(topo):
+            node.compute_grad()
+
+    def compute_grad(self):
+        for i, p in enumerate(self._parents):
+            try: gradient = self._local_grads[i]
+            except IndexError: continue
+            g = Tensor._unbroadcast_grad(gradient(self.grad), p)
+            if p.grad is None: p.grad = g
+            else: p.grad += g
+
+    @staticmethod
+    def _unbroadcast_grad(grad, parent):
+        target = parent.data.shape
+        # sum away extra dims
+        if grad.ndim > len(target): grad = grad.sum(axis=tuple(range(grad.ndim - len(target))))
+        # sum broadcasted gradient axes where parent has size of 1
+        # ex. gradient = (3,4) parent = (1,4). Sum along axis=0
+        axes = tuple(i for i, s in enumerate(target) if s == 1 and grad.shape[i] != 1)
+        if axes: grad = grad.sum(axis=axes, keepdims=True)
+        return grad

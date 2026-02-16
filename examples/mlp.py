@@ -92,4 +92,4 @@ pred = model.forward(ds.X_test)
 right = 0
 for correct, row in zip(ds.y_test.data, pred.data):
     if row.argmax() == correct.argmax(): right += 1
-print(f"{right}/{ds.y_test.data.size} correct classifications")
+print(f"{right/ds.y_test.data.shape[0]*100:.2f}% correct classifications")

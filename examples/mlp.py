@@ -34,13 +34,13 @@ def wrap_samples(x, y):
 x_train, y_train = wrap_samples(*mnist_reader.load_mnist('datasets/fashion', kind='train'))
 x_test, y_test = wrap_samples(*mnist_reader.load_mnist('datasets/fashion', kind='t10k'))
 
-model = Model(784, 10, cross_entropy_loss, Tensor.softmax, layers=[256])
+model = Model(784, 10, cross_entropy_loss, Tensor.softmax, layers=[256, 128])
 optimizer = ADAM(model.params())
 
 # training
-for epoch in range(100):
+for epoch in range(200):
     total_loss = 0.0
-    for x, y in sgd_batches(x_train, y_train ,batch_size=32):
+    for x, y in sgd_batches(x_train, y_train, batch_size=200):
         optimizer.zero()
         pred = model.forward(x)
         total_loss += model.backward(pred, y).data

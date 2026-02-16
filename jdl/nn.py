@@ -4,9 +4,9 @@ import numpy as np
 from typing import List
 
 class Layer:
-    def __init__(self, inputs, outputs, sigma=0.01):
+    def __init__(self, inputs, outputs):
         self.shape = (inputs,outputs)
-        self.W = Tensor(np.random.normal(0, sigma, (inputs,outputs)))
+        self.W = Tensor(np.random.normal(0, np.sqrt(2.0/inputs), (inputs,outputs)))
         self.b = Tensor(np.zeros(outputs))
     def forward(self, x: Tensor):
         x = x.reshape((-1, self.shape[0]))

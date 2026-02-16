@@ -57,14 +57,13 @@ class ADAM(Optimizer):
         self.step_size = step_size
         self.b1, self.b2 = decay_rates
         self.t = 0
+        self.m, self.v = [0.0] * len(params), [0.0] * len(params)
         self.moments = [(0,0) for _ in range(len(params))]
     def step(self):
         self.t += 1
         for i, p in enumerate(self.params):
-            m1, v1 = self.moments[i]
-            m1 = self.b1 * m1 + (1 - self.b1) * p.grad
-            v1 = self.b2 * v1 + (1 - self.b2) * p.grad * p.grad
-            m1_hat = m1 / (1 - self.b1 ** self.t)
-            v1_hat = v1 / (1 - self.b2 ** self.t)
+            self.m[i] = self.b1 * self.m[i] + (1 - self.b1) * p.grad
+            self.v[i] = self.b2 * self.v[i] + (1 - self.b2) * p.grad * p.grad
+            m1_hat = self.m[i] / (1 - self.b1 ** self.t)
+            v1_hat = self.v[i] / (1 - self.b2 ** self.t)
             p.data -= self.step_size * m1_hat / (np.sqrt(v1_hat) + 1e-8)
-            self.moments[i]=(m1,v1)

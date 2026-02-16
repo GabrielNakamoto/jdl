@@ -27,7 +27,6 @@ class Tensor:
         return Tensor(cached, parents=(self,), local_grads=(lambda g: g*cached,))
 
     def __add__(self, other): return Tensor(self.data + other.data, parents=(self, other), local_grads=(lambda g:g, lambda g:g))
-    def __sub__(self, other): return Tensor(self.data - other.data, parents=(self,other), local_grads=(lambda g:g, lambda g:-g))
     def __mul__(self, other: Union[Tensor, float]):
         ist = isinstance(other, Tensor)
         factor = other if not ist else other.data
@@ -36,10 +35,13 @@ class Tensor:
 
     def __matmul__(self, other): return Tensor(self.data @ other.data, parents=[self, other], local_grads=(lambda g: g @ other.data.T, lambda g: self.data.T @ g))
 
-    def __rsub__(self, other): return self - other
+    def __radd__(self, other): return self + other
+    def __sub__(self, other): return self + (-other)
+    def __rsub__(self, other): return other + (-self)
     def __rmul__(self, other): return self * other
     def __neg__(self): return self * -1.0
-    def __truediv__(self, other: Union[Tensor, float]): return self * (other**-1)
+    def __truediv__(self, other): return self * (other**-1)
+    def __rtruediv__(self, other): return other * (self**-1)
 
     def sum(self, axis): return Tensor(self.data.sum(axis=axis, keepdims=True), parents=(self,), local_grads=(lambda g: np.ones(self.data.shape) * g,))
     def reshape(self, shape): return Tensor(self.data.reshape(*shape), parents=(self,), local_grads=(lambda g: g.reshape(self.data.shape),))

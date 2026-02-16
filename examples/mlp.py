@@ -78,6 +78,7 @@ ds = Dataset(training, testing, 10)
 
 model = Model(784, 10, layers=[256])
 
+# training
 for epoch in range(500):
     total_loss = 0.0
     for x, y in ds.sgd_batches(batch_size=200):
@@ -85,3 +86,11 @@ for epoch in range(500):
         pred = model.forward(x)
         total_loss += model.backward(pred, y).data
     if epoch % 10 == 0: print(f"Epoch: {epoch}\tloss={total_loss}")
+
+# test generalization
+pred = model.forward(ds.X_test)
+right = 0
+for correct, row in zip(ds.y_test.data, pred.data):
+    if row.argmax() == correct:
+        right += 1
+print("{ds.y_test.data.size}/{right} correct classifications")

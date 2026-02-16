@@ -3,7 +3,7 @@ from typing import Union, List
 import numpy as np
 
 class Tensor:
-    def __init__(self, data: Union[np.ndarray, list], parents=[], requires_grad=True, local_grads=()):
+    def __init__(self, data: Union[np.ndarray, list], parents=(), requires_grad=True, local_grads=()):
         if isinstance(data, list): data = np.array(data, dtype=np.float32)
         if isinstance(data, np.ndarray): data = data.astype(np.float32, copy=False)
         self.requires_grad = requires_grad
@@ -17,21 +17,21 @@ class Tensor:
 
     def __pow__(self, scalar):
         cached = self.data ** (scalar-1)
-        return Tensor(cached*self.data, parents=[self,], local_grads=(lambda g: g*scalar*cached,))
-    def log(self): return Tensor(np.log(self.data), parents=[self], local_grads=(lambda g: g/self.data,))
+        return Tensor(cached*self.data, parents=(self,), local_grads=(lambda g: g*scalar*cached,))
+    def log(self): return Tensor(np.log(self.data), parents=(self,), local_grads=(lambda g: g/self.data,))
     def exp(self):
         cached = np.exp(self.data)
-        return Tensor(cached, parents=[self], local_grads=(lambda g: g*cached,))
+        return Tensor(cached, parents=(self,), local_grads=(lambda g: g*cached,))
 
-    def __add__(self, other): return Tensor(self.data + other.data, parents=[self, other], local_grads=(lambda g:g, lambda g:g))
-    def __sub__(self, other): return Tensor(self.data - other.data, parents=[self,other], local_grads=(lambda g:g, lambda g:-g))
+    def __add__(self, other): return Tensor(self.data + other.data, parents=(self, other), local_grads=(lambda g:g, lambda g:g))
+    def __sub__(self, other): return Tensor(self.data - other.data, parents=(self,other), local_grads=(lambda g:g, lambda g:-g))
     def __mul__(self, other: Union[Tensor, float]):
         factor = other
         parents = (self,)
         if isinstance(other, Tensor):
             factor = other.data
             parents = (self,other)
-        return Tensor(self.data * factor, parents=list(parents), local_grads=(lambda g: g*factor, lambda g: g*self.data))
+        return Tensor(self.data * factor, parents=parents, local_grads=(lambda g: g*factor, lambda g: g*self.data))
 
     def __matmul__(self, other): return Tensor(self.data @ other.data, parents=[self, other], local_grads=(lambda g: g @ other.data.T, lambda g: self.data.T @ g))
 
@@ -40,9 +40,12 @@ class Tensor:
     def __neg__(self): return self * -1.0
     def __truediv__(self, other: Union[Tensor, float]): return self * (other**-1)
 
-    def sum(self, axis): return Tensor(self.data.sum(axis=axis, keepdims=True), parents=[self], local_grads=(lambda g: np.ones(self.data.shape) * g,))
-    def reshape(self, shape): return Tensor(self.data.reshape(*shape), parents=[self], local_grads=(lambda g: g.reshape(self.data.shape),))
-    def mean(self): return Tensor(self.data.mean(), parents=[self], local_grads=(lambda g: np.ones(self.data.shape) * g / self.data.size,))
+    def sum(self, axis): return Tensor(self.data.sum(axis=axis, keepdims=True), parents=(self,), local_grads=(lambda g: np.ones(self.data.shape) * g,))
+    def reshape(self, shape): return Tensor(self.data.reshape(*shape), parents=(self,), local_grads=(lambda g: g.reshape(self.data.shape),))
+    def mean(self): return Tensor(self.data.mean(), parents=(self,), local_grads=(lambda g: np.ones(self.data.shape) * g / self.data.size,))
+
+    def relu(self):
+        return Tensor(np.maximum(self.data, 0), parents=(self,), local_grads=(lambda g: g * np.where(self.data > 0, 1, 0),))
 
     def softmax(self):
         # subtract max to prevent overflow, softmax has shift invariance
@@ -57,11 +60,9 @@ class Tensor:
         topo = []
         visited = set()
         def dfs(node):
-            if node in visited or not node.requires_grad:
-                return
+            if node in visited or not node.requires_grad: return
             visited.add(node)
-            for n in node.parents:
-                dfs(n)
+            for n in node.parents: dfs(n)
             topo.append(node)
         dfs(self)
         return topo
@@ -70,5 +71,4 @@ class Tensor:
         from . import engine
         topo = self._toposort()
         self.grad = np.ones_like(self.data)
-        for node in reversed(topo):
-            engine.compute_grad(node)    
+        for node in reversed(topo): engine.compute_grad(node)    

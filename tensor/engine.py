@@ -1,13 +1,13 @@
 from .tensor import Tensor
-from .ops import Op
 import numpy as np
 
 def compute_grad(node: Tensor):
     for i, p in enumerate(node.parents):
         try: gradient = node.local_grads[i]
-        except: continue
+        except IndexError: continue
         g = _unbroadcast_grad(gradient(node.grad), p)
-        p.grad += g
+        if p.grad is None: p.grad = g
+        else: p.grad += g
 
 def _unbroadcast_grad(grad, parent):
     target = parent.data.shape

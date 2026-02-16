@@ -22,14 +22,14 @@ class Model:
             last = inputs if i == 0 else layers[i-1]
             self.layers.append(Layer(last, n))
         self.layers.append(Layer(inputs if not hidden else layers[-1], outputs))
+    def parameters(self):
+        params = []
+        for l in self.layers: params.extend((l.W,l.b))
+        return params
     def learn(self):
-        for l in self.layers:
-            l.W.data -= self.lr * l.W.grad
-            l.b.data -= self.lr * l.b.grad
+        for p in self.parameters(): p.data -= self.lr * p.grad
     def zero_grads(self):
-        for l in self.layers:
-            l.W.zero_grad()
-            l.b.zero_grad()
+        for p in self.parameters(): p.zero_grad()
     def forward(self, x):
         logits = x
         for l in self.layers[:-1]: logits = self.activation(l.forward(logits))

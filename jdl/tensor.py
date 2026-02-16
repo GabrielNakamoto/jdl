@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Union, List
+from typing import Union
 import numpy as np
 
 class Tensor:
@@ -46,6 +46,14 @@ class Tensor:
     def mean(self): return Tensor(self.data.mean(), parents=(self,), local_grads=(lambda g: np.ones(self.data.shape) * g / self.data.size,))
 
     def relu(self): return Tensor(np.maximum(self.data, 0), parents=(self,), local_grads=(lambda g: g * np.where(self.data > 0, 1, 0),))
+    def sigmoid(self):
+        s = 1.0 / (1.0 + np.exp(-self.data))
+        return Tensor(s, parents=(self,), local_grads=(lambda g: g * s * (1 - s),))
+    def tanh(self):
+        e = np.exp(-2 * self.data)
+        t = (1 - e) * (1 + e)
+        tt = t*t
+        return Tensor(t, parents=(self,), local_grads=(lambda g: g * (1 - tt),))
 
     def softmax(self):# subtract max to prevent overflow, softmax has shift invariance
         e = (self - Tensor(self.data.max(axis=1, keepdims=True))).exp()

@@ -38,9 +38,9 @@ model = Model(784, 10, cross_entropy_loss, Tensor.softmax, layers=[256])
 optimizer = ADAM(model.params())
 
 # training
-for epoch in range(500):
+for epoch in range(100):
     total_loss = 0.0
-    for x, y in sgd_batches(x_train, y_train ,batch_size=200):
+    for x, y in sgd_batches(x_train, y_train ,batch_size=32):
         optimizer.zero()
         pred = model.forward(x)
         total_loss += model.backward(pred, y).data

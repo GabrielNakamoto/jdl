@@ -10,6 +10,10 @@ def get_model_params(model):
         if isinstance(value, Linear): params.extend((value.W, value.b))
     return params
 
+class Conv2d:
+    def __init__(self):
+        pass
+
 class Linear:
     def __init__(self, inputs, outputs):
         self.shape = (inputs,outputs)

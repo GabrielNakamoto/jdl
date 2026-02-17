@@ -28,6 +28,26 @@ class Tensor:
         mask = (np.random.uniform(size=self.shape) > p).astype(np.float32) / (1.0 - p)
         return Tensor(self.data * mask, parents=(self,), local_grads=(lambda g: g * mask,))
 
+    def _corr2d(self, k):
+        kh, kw = k.shape
+        h, w = self.shape
+        yh, yw = h-kh+1, w-kw+1
+        y = np.zeros(((yh,yw)))
+        for i in range(yh):
+            for j in range(yw):
+                y[i,j]=np.sum(self.data[i:i+kh,j:j+kw]*k.data)
+        return y
+    
+    def corr2d(self, k):
+        y = self._corr2d(k)
+
+        def grad_x(g):
+            kh, kw = k.shape
+            padded = Tensor(np.pad(g, ((kh-1,kh-1),(kw-1,kw-1))))
+            k_conv = Tensor(k.data[::-1,::-1])
+            return padded._corr2d(k_conv)
+        return Tensor(y, parents=(self,k), local_grads=(grad_x, lambda g: self._corr2d(Tensor(g))))
+
     def __pow__(self, scalar):
         cached = self.data ** (scalar-1)
         return Tensor(cached*self.data, parents=(self,), local_grads=(lambda g: g*scalar*cached,))
@@ -54,7 +74,7 @@ class Tensor:
     def __truediv__(self, other): return self * (other**-1)
     def __rtruediv__(self, other): return other * (self**-1)
 
-    def sum(self, axis): return Tensor(self.data.sum(axis=axis, keepdims=True), parents=(self,), local_grads=(lambda g: np.ones(self.data.shape) * g,))
+    def sum(self, axis=None): return Tensor(self.data.sum(axis=axis, keepdims=True), parents=(self,), local_grads=(lambda g: np.ones(self.data.shape) * g,))
     def reshape(self, shape): return Tensor(self.data.reshape(*shape), parents=(self,), local_grads=(lambda g: g.reshape(self.data.shape),))
     def mean(self): return Tensor(self.data.mean(), parents=(self,), local_grads=(lambda g: np.ones(self.data.shape) * g / self.data.size,))
 

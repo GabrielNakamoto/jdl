@@ -3,40 +3,21 @@ from jdl.tensor import Tensor
 import numpy as np
 from typing import List
 
-class Layer:
+
+def get_model_params(model):
+    params = []
+    for _, value in vars(model).items():
+        if isinstance(value, Linear): params.extend((value.W, value.b))
+    return params
+
+class Linear:
     def __init__(self, inputs, outputs):
         self.shape = (inputs,outputs)
         self.W = Tensor(np.random.normal(0, np.sqrt(2.0/inputs), (inputs,outputs)))
         self.b = Tensor(np.zeros(outputs))
-    def forward(self, x: Tensor):
+    def __call__(self, x: Tensor):
         x = x.reshape((-1, self.shape[0]))
         return x @ self.W + self.b
-
-class Model:
-    def __init__(self, inputs, outputs, loss, final, activation=Tensor.relu, layers=[]):
-        hidden = len(layers) > 0
-        self.layers = []
-        self.loss = loss
-        self.activation = activation
-        self.final = final
-        for i, n in enumerate(layers):
-            last = inputs if i == 0 else layers[i-1]
-            self.layers.append(Layer(last, n))
-        self.layers.append(Layer(inputs if not hidden else layers[-1], outputs))
-    def params(self):
-        params = []
-        for l in self.layers: params.extend((l.W,l.b))
-        return params
-    def forward(self, x, dropout_p=None):
-        logits = x
-        for l in self.layers[:-1]:
-            logits = self.activation(l.forward(logits))
-            if dropout_p: logits = logits.dropout(dropout_p)
-        return self.final(self.layers[-1].forward(logits))
-    def backward(self, pred, y):
-        loss = self.loss(pred, y)
-        loss.backward()
-        return loss
 
 class Optimizer:
     def __init__(self, params: List[Tensor]):
@@ -56,11 +37,9 @@ class SGD(Optimizer):
 class ADAM(Optimizer):
     def __init__(self, params: List[Tensor], step_size=0.001, decay_rates=(0.9,0.999)):
         super().__init__(params)
-        self.step_size = step_size
+        self.step_size, self.t = step_size, 0
         self.b1, self.b2 = decay_rates
-        self.t = 0
         self.m, self.v = [0.0] * len(params), [0.0] * len(params)
-        self.moments = [(0,0) for _ in range(len(params))]
     def step(self):
         self.t += 1
         for i, p in enumerate(self.params):

@@ -42,8 +42,7 @@ class Tensor:
     def __mul__(self, other: Union[Tensor, float]):
         ist = isinstance(other, Tensor)
         factor = other if not ist else other.data
-        parents = (self,) if not ist else (self,other)
-        return Tensor(self.data * factor, parents=parents, local_grads=(lambda g: g*factor, lambda g: g*self.data))
+        return Tensor(self.data * factor, parents=(self,other) if ist else (self,), local_grads=(lambda g: g*factor, lambda g: g*self.data))
 
     def __matmul__(self, other): return Tensor(self.data @ other.data, parents=[self, other], local_grads=(lambda g: g @ other.data.T, lambda g: self.data.T @ g))
 

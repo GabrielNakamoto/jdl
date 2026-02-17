@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Union
+from typing import Union, Tuple
 import numpy as np
 
 class Tensor:
@@ -28,25 +28,47 @@ class Tensor:
         mask = (np.random.uniform(size=self.shape) > p).astype(np.float32) / (1.0 - p)
         return Tensor(self.data * mask, parents=(self,), local_grads=(lambda g: g * mask,))
 
-    def _corr2d(self, k):
-        kh, kw = k.shape
-        h, w = self.shape
-        yh, yw = h-kh+1, w-kw+1
-        y = np.zeros(((yh,yw)))
-        for i in range(yh):
-            for j in range(yw):
-                y[i,j]=np.sum(self.data[i:i+kh,j:j+kw]*k.data)
-        return y
-    
-    def corr2d(self, k):
-        y = self._corr2d(k)
 
-        def grad_x(g):
-            kh, kw = k.shape
-            padded = Tensor(np.pad(g, ((kh-1,kh-1),(kw-1,kw-1))))
-            k_conv = Tensor(k.data[::-1,::-1])
-            return padded._corr2d(k_conv)
-        return Tensor(y, parents=(self,k), local_grads=(grad_x, lambda g: self._corr2d(Tensor(g))))
+    # im2col optimziation: https://rileylearning.medium.com/convolution-layer-with-numpy-5d8cca3c2152
+    # https://medium.com/@sundarramanp2000/different-implementations-of-the-ubiquitous-convolution-6a9269dbe77f
+    def conv2d(self, k, stride: int | Tuple[int, ...], padding: int | Tuple[int, ...]):
+        if isinstance(padding, int): padding = (padding,padding)
+        if isinstance(stride, int): stride = (stride,stride)
+        kh, kw, ci, co = k.shape
+        cols, oh, ow = self.im2col(k, stride, padding)
+        k_flat = k.reshape((kh * kw * ci, co))
+        return (cols @ k_flat).reshape((self.shape[0], oh, ow, co))
+
+    def im2col(self, k, stride, padding):
+        N, h, w, c = self.shape
+        kh, kw, _, _ = k.shape
+        oh, ow = (h - kh + 2*padding[0]) // stride[0] + 1, (w - kw + 2*padding[1]) // stride[1] + 1
+
+        img = np.pad(self.data, [(0,0),(padding[0],padding[0]),(padding[1],padding[1]),(0,0)])
+        cols = np.zeros((N,oh,ow,kh,kw,c))
+
+        for y in range(kh):
+            y_max = y + stride[0] * oh
+            for x in range(kw):
+                x_max = x + stride[1] * ow
+                cols[:, :, :, y, x, :]+=img[:, y:y_max:stride[0], x:x_max:stride[1], :]
+
+        # extracts input patches (windows kernel is applied to) and stores as output collumns
+        # (# of patches, flattened size of patch)
+        out = cols.reshape(N * oh * ow, c * kh * kw)
+
+        def backward(g):
+            dcols = g.reshape(N, oh, ow, kh, kw, c)
+            dimg = np.zeros_like(img)
+            for y in range(kh):
+                y_max = y + stride[0]*oh
+                for x in range(kw):
+                    x_max = x + stride[1]*ow
+                    dimg[:,y:y_max:stride[0],x:x_max:stride[1],:] += dcols[:,:,:,y,x,:]
+            ph, pw = padding
+            return dimg[:, ph:ph+h, pw:pw+w, :]
+
+        return Tensor(out, parents=(self,), local_grads=(backward,)), oh, ow
 
     def __pow__(self, scalar):
         cached = self.data ** (scalar-1)

@@ -2,9 +2,17 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from jdl import Tensor
+from jdl.nn import Conv2d, get_model_params
+import numpy as np
 
-x = Tensor([[0.0, 1.0, 2.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]])
-k = Tensor([[0.0, 1.0], [2.0, 3.0]])
-y = x.corr2d(k)
+class Model:
+    def __init__(self):
+        self.l1 = Conv2d(1, 1, 3)
+    def __call__(self, x):
+        return self.l1(x)
 
+X = Tensor(np.random.random(size=(1,4,4,1)))
+
+model = Model()
+y = model(X)
 print(y.data)

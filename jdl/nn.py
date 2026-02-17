@@ -1,27 +1,47 @@
 from __future__ import annotations
 from jdl.tensor import Tensor
 import numpy as np
-from typing import List
+from typing import List, Tuple
 
 
 def get_model_params(model):
     params = []
-    for _, value in vars(model).items():
-        if isinstance(value, Linear): params.extend((value.W, value.b))
+    for _, value in vars(model).items(): params.extend(value.params())
     return params
 
 class Conv2d:
-    def __init__(self):
-        pass
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        kernel_size: int | Tuple[int, int],
+        stride: int | Tuple[int,int]=1,
+        padding: int | Tuple[int,int]=0
+    ):
+        if isinstance(kernel_size, int): kernel_size = (kernel_size,kernel_size)
+        if isinstance(stride, int): stride = (stride,stride)
+        if isinstance(padding, int): padding = (padding,padding)
+
+        self.padding, self.stride = padding, stride
+        self.channels = (in_channels, out_channels)
+
+        self.weights = Tensor(np.random.random((kernel_size + self.channels)))
+        self.bias = Tensor(np.zeros(1))
+    def params(self):
+        return self.weights, self.bias
+    def __call__(self, x):
+        return x.conv2d(self.weights, self.stride, self.padding) + self.bias
 
 class Linear:
     def __init__(self, inputs, outputs):
         self.shape = (inputs,outputs)
-        self.W = Tensor(np.random.normal(0, np.sqrt(2.0/inputs), (inputs,outputs)))
-        self.b = Tensor(np.zeros(outputs))
+        self.weights = Tensor(np.random.normal(0, np.sqrt(2.0/inputs), (inputs,outputs)))
+        self.bias = Tensor(np.zeros(outputs))
+    def params(self):
+        return self.weights, self.bias
     def __call__(self, x: Tensor):
         x = x.reshape((-1, self.shape[0]))
-        return x @ self.W + self.b
+        return x @ self.weights + self.bias
 
 class Optimizer:
     def __init__(self, params: List[Tensor]):

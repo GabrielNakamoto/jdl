@@ -17,8 +17,9 @@ class BatchNorm:
         self.epsilon = Tensor(np.array(epsilon))
     def params(self): return self.weights, self.bias
     def __call__(self, x):
-        mean = x.mean()
-        var = ((x - mean) ** 2).mean()
+        axis = tuple(range(x.data.ndim - 1))
+        mean = x.mean(axis=axis)
+        var = ((x - mean) ** 2).mean(axis=axis)
         x = (x - mean) / (var + self.epsilon).sqrt()
         return x * self.weights + self.bias
 
@@ -38,7 +39,7 @@ class Conv2d:
         self.padding, self.stride = padding, stride
         self.channels = (in_channels, out_channels)
 
-        self.weights = Tensor(np.random.random((kernel_size + self.channels)))
+        self.weights = Tensor(np.random.normal(0, np.sqrt(2.0/in_channels), (kernel_size + self.channels)))
         self.bias = Tensor(np.zeros(1))
     def params(self): return self.weights, self.bias
     def __call__(self, x):

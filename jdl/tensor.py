@@ -61,7 +61,9 @@ class Tensor:
     def sum(self, axis=None): return Tensor(self.data.sum(axis=axis, keepdims=True), parents=(self,), local_grads=(lambda g: np.ones(self.data.shape) * g,))
     def reshape(self, shape): return Tensor(self.data.reshape(*shape), parents=(self,), local_grads=(lambda g: g.reshape(self.data.shape),))
     def mean(self, axis=None):
-        n = self.data.size if axis is None else self.data.shape[axis]
+        if axis is None: n = self.data.size
+        elif isinstance(axis, tuple): n = np.prod([self.data.shape[a] for a in axis])
+        else: n = self.data.shape[axis]
         return self.sum(axis=axis) * (1.0 / n)
     def max(self, axis=None):
         out = self.data.max(axis=axis, keepdims=True)
@@ -90,7 +92,7 @@ class Tensor:
         return shifted - sl
 
     def sparse_categorical_crossentropy(self, y):
-        return -((y.one_hot(self.shape[1]) * self.log_softmax()).mean())
+        return -((y.one_hot(self.shape[1]) * self.log_softmax()).sum(axis=1).mean())
 
     @property
     def shape(self): return self.data.shape

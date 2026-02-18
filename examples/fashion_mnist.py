@@ -35,7 +35,7 @@ class Model:
         return self.l3(x).softmax()
 
 model = Model()
-optimizer = ADAM(get_model_params(model))
+optimizer = ADAM(model)
 
 # training
 for epoch in range(200):

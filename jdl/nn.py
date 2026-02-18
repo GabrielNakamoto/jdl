@@ -9,6 +9,19 @@ def get_model_params(model):
     for _, value in vars(model).items(): params.extend(value.params())
     return params
 
+class AvgPool:
+    def __init__(
+        self,
+        pool_size: int | Tuple[int, int],
+        stride: int | Tuple[int, int],
+        padding: int | Tuple[int, int]=0
+    ):
+        self.stride, self.padding = stride, padding
+        self.pool_shape = (pool_size,pool_size)
+    def params(self): return ()
+    def __call__(self, x):
+        return x.avgpool2d(self.pool_shape, self.stride, self.padding)
+
 class Conv2d:
     def __init__(
         self,
@@ -27,8 +40,7 @@ class Conv2d:
 
         self.weights = Tensor(np.random.random((kernel_size + self.channels)))
         self.bias = Tensor(np.zeros(1))
-    def params(self):
-        return self.weights, self.bias
+    def params(self): return self.weights, self.bias
     def __call__(self, x):
         return x.conv2d(self.weights, self.stride, self.padding) + self.bias
 
@@ -37,8 +49,7 @@ class Linear:
         self.shape = (inputs,outputs)
         self.weights = Tensor(np.random.normal(0, np.sqrt(2.0/inputs), (inputs,outputs)))
         self.bias = Tensor(np.zeros(outputs))
-    def params(self):
-        return self.weights, self.bias
+    def params(self): return self.weights, self.bias
     def __call__(self, x: Tensor):
         x = x.reshape((-1, self.shape[0]))
         return x @ self.weights + self.bias
@@ -51,16 +62,16 @@ class Optimizer:
 
 
 class SGD(Optimizer):
-    def __init__(self, params: List[Tensor], lr=0.01):
-        super().__init__(params)
+    def __init__(self, model, lr=0.01):
+        super().__init__(get_model_params(model))
         self.lr = lr
     def step(self):
         for p in self.params: p.data -= self.lr * p.grad
 
 # https://arxiv.org/pdf/1412.6980
 class ADAM(Optimizer):
-    def __init__(self, params: List[Tensor], step_size=0.001, decay_rates=(0.9,0.999)):
-        super().__init__(params)
+    def __init__(self, model, step_size=0.001, decay_rates=(0.9,0.999)):
+        super().__init__(get_model_params(model))
         self.step_size, self.t = step_size, 0
         self.b1, self.b2 = decay_rates
         self.m, self.v = [0.0] * len(params), [0.0] * len(params)

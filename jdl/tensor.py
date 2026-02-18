@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Union, Tuple
 import numpy as np
+from numpy.lib.stride_tricks import as_strided
 
 class Tensor:
     def __init__(self, data: Union[np.ndarray, list], parents: Tuple[Tensor, ...]=(), requires_grad=True, local_grads=()):
@@ -118,16 +119,18 @@ class Tensor:
         oh, ow = (h - kh + 2*padding[0]) // stride[0] + 1, (w - kw + 2*padding[1]) // stride[1] + 1
 
         img = np.pad(self.data, [(0,0),(padding[0],padding[0]),(padding[1],padding[1]),(0,0)])
-        cols = np.zeros((N,oh,ow,kh,kw,c))
+        shape = (N, oh, ow, kh, kh, c)
 
-        for y in range(kh):
-            y_max = y + stride[0] * oh
-            for x in range(kw):
-                x_max = x + stride[1] * ow
-                cols[:, :, :, y, x, :]+=img[:, y:y_max:stride[0], x:x_max:stride[1], :]
-
+        strides = (
+            img.strides[0],
+            stride[0] * img.strides[1],
+            stride[1] * img.strides[2],
+            img.strides[1],
+            img.strides[2],
+            img.strides[3],
+        )
         # extracts input patches (windows kernel is applied to) and stores as output collumns
-        out = cols.reshape(N * oh * ow, c * kh * kw)
+        cols = as_strided(img, shape=shape, strides=strides).copy().reshape(N * oh * ow, c * kh * kw)
 
         def backward(g):
             dcols = g.reshape(N, oh, ow, kh, kw, c)
@@ -140,7 +143,7 @@ class Tensor:
             ph, pw = padding
             return dimg[:, ph:ph+h, pw:pw+w, :]
 
-        return Tensor(out, parents=(self,), local_grads=(backward,)), oh, ow
+        return Tensor(cols, parents=(self,), local_grads=(backward,)), oh, ow
 
     def conv2d(self, k, stride: int | Tuple[int, ...], padding: int | Tuple[int, ...]):
         if isinstance(padding, int): padding = (padding,padding)

@@ -5,7 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import mnist_reader
 from jdl import Tensor
-from jdl.nn import Conv2d, Linear, BatchNorm, SGD
+from jdl.nn import Conv2d, Linear, BatchNorm, ADAM
 
 def sgd_batches(X, y, batch_size=50):
     N = X.data.shape[0]
@@ -45,7 +45,7 @@ x_train, y_train = wrap_samples(*mnist_reader.load_mnist('datasets/fashion', kin
 x_test, y_test = wrap_samples(*mnist_reader.load_mnist('datasets/fashion', kind='t10k'))
 
 model = Model()
-optimizer = SGD(model)
+optimizer = ADAM(model)
 
 batch_size = 200
 batches = x_train.shape[0] // batch_size

@@ -22,9 +22,9 @@ class Tensor:
         hot[np.arange(samples), self.data.astype(dtype=np.int32)]=1
         return Tensor(hot)
 
-    def flatten(self):
-        self.data = self.data.flatten()
-        return self
+    def flatten(self, start=0):
+        keep = self.shape[:start]
+        return self.reshape(keep + (-1,))
     
     # https://jmlr.org/papers/v15/srivastava14a.html
     def dropout(self, p=0.5):
@@ -40,6 +40,8 @@ class Tensor:
     def exp(self):
         cached = np.exp(self.data)
         return Tensor(cached, parents=(self,), local_grads=(lambda g: g*cached,))
+
+    def sqrt(self): return self ** 0.5
 
     def __add__(self, other): return Tensor(self.data + other.data, parents=(self, other), local_grads=(lambda g:g, lambda g:g))
     def __mul__(self, other: Union[Tensor, float]):
@@ -62,6 +64,11 @@ class Tensor:
     def mean(self, axis=None):
         n = self.data.size if axis is None else self.data.shape[axis]
         return self.sum(axis=axis) * (1.0 / n)
+    def max(self, axis=None):
+        out = self.data.max(axis=axis, keepdims=True)
+        mask = (self.data == out).astype(np.float32)
+        mask /= mask.sum(axis=axis, keepdims=True)
+        return Tensor(out, parents=(self,), local_grads=(lambda g: g*mask,))
 
     def relu(self): return Tensor(np.maximum(self.data, 0), parents=(self,), local_grads=(lambda g: g * np.where(self.data > 0, 1, 0),))
     def sigmoid(self):
@@ -89,21 +96,19 @@ class Tensor:
     @property
     def shape(self): return self.data.shape
 
-    def _pool2d(self, pool_shape, stride: int | Tuple[int, ...], padding: int | Tuple[int, ...], func):
+    def _pool2d(self, pool_shape, stride: None | int | Tuple[int, ...], padding: int | Tuple[int, ...], func):
+        if stride is None: stride = pool_shape
         if isinstance(padding, int): padding = (padding,padding)
         if isinstance(stride, int): stride = (stride,stride)
         N, c = self.shape[0], self.shape[-1]
         ph, pw = pool_shape
         cols, oh, ow = self.im2col(pool_shape, stride, padding)
-        return cols.reshape((N*oh*ow, ph*pw, c)).mean(axis=1).reshape((N, oh, ow, c))
+        return func(cols.reshape((N*oh*ow, ph*pw, c)), axis=1).reshape((N, oh, ow, c))
 
-    def avgpool2d(self, pool_shape, stride: int | Tuple[int, ...], padding: int | Tuple[int, ...]):
-        if isinstance(padding, int): padding = (padding,padding)
-        if isinstance(stride, int): stride = (stride,stride)
-        N, c = self.shape[0], self.shape[-1]
-        ph, pw = pool_shape
-        cols, oh, ow = self.im2col(pool_shape, stride, padding)
-        return cols.reshape((N*oh*ow, ph*pw, c)).mean(axis=1).reshape((N, oh, ow, c))
+    def avg_pool2d(self, pool_shape, stride: None | int | Tuple[int, ...]=None, padding: int | Tuple[int, ...]=0):
+        return self._pool2d(pool_shape, stride, padding, Tensor.mean)
+    def max_pool2d(self, pool_shape, stride: None | int | Tuple[int, ...]=None, padding: int | Tuple[int, ...]=0):
+        return self._pool2d(pool_shape, stride, padding, Tensor.max)
 
     def conv2d(self, k, stride: int | Tuple[int, ...], padding: int | Tuple[int, ...]):
         if isinstance(padding, int): padding = (padding,padding)
@@ -113,7 +118,7 @@ class Tensor:
         k_flat = k.reshape((kh * kw * ci, co))
         return (cols @ k_flat).reshape((self.shape[0], oh, ow, co))
 
-    # Image to collumn transform
+    # Image to column transform
     # 
     # - https://rileylearning.medium.com/convolution-layer-with-numpy-5d8cca3c2152
     # - https://medium.com/@sundarramanp2000/different-implementations-of-the-ubiquitous-convolution-6a9269dbe77f
@@ -175,6 +180,7 @@ class Tensor:
         self.grad = np.ones_like(self.data)
         for node in reversed(topo):
             node.compute_grad()
+        return self
 
     def compute_grad(self):
         for i, p in enumerate(self._parents):

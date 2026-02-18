@@ -1,6 +1,6 @@
 from __future__ import annotations
 from jdl.tensor import Tensor
-import numpy as np
+import cupy as np
 from typing import List, Tuple
 
 
@@ -14,12 +14,12 @@ class BatchNorm:
     def __init__(self, size, epsilon=1e-6):
         self.weights = Tensor(np.ones(size))
         self.bias = Tensor(np.ones(size))
-        self.epsilon = epsilon
+        self.epsilon = Tensor(np.array(epsilon))
     def params(self): return self.weights, self.bias
     def __call__(self, x):
         mean = x.mean()
-        var = ((x - mean).pow(2)).mean()
-        x = (x - mean) / (np.sqrt(var + self.epsilon))
+        var = ((x - mean) ** 2).mean()
+        x = (x - mean) / (var + self.epsilon).sqrt()
         return x * self.weights + self.bias
 
 class Conv2d:

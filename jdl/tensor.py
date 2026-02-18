@@ -6,8 +6,7 @@ class Tensor:
     def __init__(self, data: Union[np.ndarray, list], parents=(), requires_grad=True, local_grads=()):
         if isinstance(data, list): data = np.array(data, dtype=np.float32)
         if isinstance(data, np.ndarray): data = data.astype(np.float32, copy=False)
-        self.data = data
-        self.grad = None
+        self.data, self.grad = data, None
 
         self._requires_grad = requires_grad
         self._parents = parents

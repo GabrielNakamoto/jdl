@@ -1,6 +1,6 @@
 from __future__ import annotations
 from jdl.tensor import Tensor
-import cupy as np
+import numpy as np
 from typing import List, Tuple
 
 

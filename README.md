@@ -7,4 +7,5 @@
 - Papers implemented:
     - [ADAM](https://arxiv.org/pdf/1412.6980)
     - [dropout](https://jmlr.org/papers/v15/srivastava14a.html)
+    - [Batch Normalization](https://arxiv.org/pdf/1502.03167)
 

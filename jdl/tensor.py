@@ -3,7 +3,7 @@ from typing import Union, Tuple
 import numpy as np
 
 class Tensor:
-    def __init__(self, data: Union[np.ndarray, list], parents=(), requires_grad=True, local_grads=()):
+    def __init__(self, data: Union[np.ndarray, list], parents: Tuple[Tensor, ...]=(), requires_grad=True, local_grads=()):
         if isinstance(data, list): data = np.array(data, dtype=np.float32)
         if isinstance(data, np.ndarray): data = data.astype(np.float32, copy=False)
         self.data, self.grad = data, None
@@ -91,31 +91,28 @@ class Tensor:
         return shifted - sl
     def sparse_categorical_crossentropy(self, y):
         return -((y.one_hot(self.shape[1]) * self.log_softmax()).sum(axis=1).mean())
-    # https://jmlr.org/papers/v15/srivastava14a.html
     def dropout(self, p=0.5):
+        # Paper: https://jmlr.org/papers/v15/srivastava14a.html
         mask = (np.random.uniform(size=self.shape) > p).astype(np.float32) / (1.0 - p)
         return Tensor(self.data * mask, parents=(self,), local_grads=(lambda g: g * mask,))
 
     # --- CNN/Pooling ---
-
-    # Image to column transform
-    # 
-    # - https://rileylearning.medium.com/convolution-layer-with-numpy-5d8cca3c2152
-    # - https://medium.com/@sundarramanp2000/different-implementations-of-the-ubiquitous-convolution-6a9269dbe77f
-    # 
-    # Parameters:
-    # - 4d image tensor with shape NHWC
-    # - shape of kernel / window
-    # - kerne stride
-    # - image padding
-    # 
-    # - Let a window be a unique 2d range over which the kernel is applied
-    # - This transformation takes each unique window, respecting strides, padding 
-    #   and input/output channels, and flattens them into collumns
-    # 
-    # - Outputs a 2d collumn tensor with shape (# of windows, size of a window)
-    # 
     def im2col(self, kshape, stride, padding):
+        # References:
+        # - https://rileylearning.medium.com/convolution-layer-with-numpy-5d8cca3c2152
+        # - https://medium.com/@sundarramanp2000/different-implementations-of-the-ubiquitous-convolution-6a9269dbe77f
+        # 
+        # Parameters:
+        # - 4d image tensor with shape NHWC
+        # - shape of kernel / window
+        # - kerne stride
+        # - image padding
+        # 
+        # - Let a window be a unique 2d range over which the kernel is applied
+        # - This transformation takes each unique window, respecting strides, padding 
+        #   and input/output channels, and flattens them into collumns
+        # 
+        # - Outputs a 2d collumn tensor with shape (# of windows, size of a window)
         N, h, w, c = self.shape
         kh, kw, = kshape[:2]
         oh, ow = (h - kh + 2*padding[0]) // stride[0] + 1, (w - kw + 2*padding[1]) // stride[1] + 1
@@ -169,6 +166,21 @@ class Tensor:
 
 
     # --- Autograd Engine ---
+    def backward(self):
+        topo = self._toposort()
+        self.grad = np.ones_like(self.data)
+        for node in reversed(topo):
+            node._compute_grad()
+        return self
+
+    def _compute_grad(self):
+        for i, p in enumerate(self._parents):
+            try: gradient = self._local_grads[i]
+            except IndexError: continue
+            g = Tensor._unbroadcast_grad(gradient(self.grad), p)
+            if p.grad is None: p.grad = g
+            else: p.grad += g
+
     def _toposort(self):
         topo, visited = [], set()
         def dfs(node):
@@ -178,21 +190,6 @@ class Tensor:
             topo.append(node)
         dfs(self)
         return topo
-
-    def backward(self):
-        topo = self._toposort()
-        self.grad = np.ones_like(self.data)
-        for node in reversed(topo):
-            node.compute_grad()
-        return self
-
-    def compute_grad(self):
-        for i, p in enumerate(self._parents):
-            try: gradient = self._local_grads[i]
-            except IndexError: continue
-            g = Tensor._unbroadcast_grad(gradient(self.grad), p)
-            if p.grad is None: p.grad = g
-            else: p.grad += g
 
     @staticmethod
     def _unbroadcast_grad(grad, parent):

@@ -13,7 +13,7 @@ class BatchNorm:
     # Paper: https://arxiv.org/pdf/1502.03167v3
     def __init__(self, size, epsilon=1e-6):
         self.weights = Tensor(np.ones(size))
-        self.bias = Tensor(np.ones(size))
+        self.bias = Tensor(np.zeros(size))
         self.epsilon = Tensor(np.array(epsilon))
     def params(self): return self.weights, self.bias
     def __call__(self, x):
@@ -39,7 +39,7 @@ class Conv2d:
         self.padding, self.stride = padding, stride
         self.channels = (in_channels, out_channels)
 
-        self.weights = Tensor(np.random.normal(0, np.sqrt(2.0/in_channels), (kernel_size + self.channels)))
+        self.weights = Tensor(np.random.normal(0, np.sqrt(2.0/kernel_size[0]*kernel_size[1]*in_channels), (kernel_size + self.channels)))
         self.bias = Tensor(np.zeros(1))
     def params(self): return self.weights, self.bias
     def __call__(self, x):
@@ -70,8 +70,8 @@ class SGD(Optimizer):
     def step(self):
         for p in self.params: p.data -= self.lr * p.grad
 
-# https://arxiv.org/pdf/1412.6980
 class ADAM(Optimizer):
+    # Paper: https://arxiv.org/pdf/1412.6980
     def __init__(self, model, step_size=0.001, decay_rates=(0.9,0.999)):
         super().__init__(get_model_params(model))
         self.step_size, self.t = step_size, 0

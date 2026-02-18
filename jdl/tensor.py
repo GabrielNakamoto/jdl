@@ -12,44 +12,33 @@ class Tensor:
         self._parents = parents
         self._local_grads = local_grads
 
+    @property
+    def shape(self): return self.data.shape
+
     def zero_grad(self):
         if self.grad is not None: self.grad.fill(0)
 
-    def one_hot(self, classes):
-        samples, = self.shape
-        hot = np.zeros((samples,classes))
-        hot[np.arange(samples), self.data.astype(dtype=np.int32)]=1
-        return Tensor(hot)
-
-    def flatten(self, start=0):
-        keep = self.shape[:start]
-        return self.reshape(keep + (-1,))
-    
-    # https://jmlr.org/papers/v15/srivastava14a.html
-    def dropout(self, p=0.5):
-        mask = (np.random.uniform(size=self.shape) > p).astype(np.float32) / (1.0 - p)
-        return Tensor(self.data * mask, parents=(self,), local_grads=(lambda g: g * mask,))
-
-    def __pow__(self, scalar):
-        cached = self.data ** (scalar-1)
-        return Tensor(cached*self.data, parents=(self,), local_grads=(lambda g: g*scalar*cached,))
+    # --- Unary Ops --
     def log(self):
         clamped = np.clip(self.data, 1e-12, None)
         return Tensor(np.log(clamped), parents=(self,), local_grads=(lambda g: g/clamped,))
     def exp(self):
         cached = np.exp(self.data)
         return Tensor(cached, parents=(self,), local_grads=(lambda g: g*cached,))
-
+    def __pow__(self, scalar):
+        cached = self.data ** (scalar-1)
+        return Tensor(cached*self.data, parents=(self,), local_grads=(lambda g: g*scalar*cached,))
     def sqrt(self): return self ** 0.5
 
+    # --- Binary Ops ---
     def __add__(self, other): return Tensor(self.data + other.data, parents=(self, other), local_grads=(lambda g:g, lambda g:g))
     def __mul__(self, other: Union[Tensor, float]):
         ist = isinstance(other, Tensor)
         factor = other if not ist else other.data
         return Tensor(self.data * factor, parents=(self,other) if ist else (self,), local_grads=(lambda g: g*factor, lambda g: g*self.data))
-
     def __matmul__(self, other): return Tensor(self.data @ other.data, parents=[self, other], local_grads=(lambda g: g @ other.data.T, lambda g: self.data.T @ g))
 
+    # --- Composed/Reverse Ops ---
     def __radd__(self, other): return self + other
     def __sub__(self, other): return self + (-other)
     def __rsub__(self, other): return other + (-self)
@@ -58,8 +47,12 @@ class Tensor:
     def __truediv__(self, other): return self * (other**-1)
     def __rtruediv__(self, other): return other * (self**-1)
 
-    def sum(self, axis=None): return Tensor(self.data.sum(axis=axis, keepdims=True), parents=(self,), local_grads=(lambda g: np.ones(self.data.shape) * g,))
+    # --- Reshape Ops ---
+    def flatten(self, start=0): return self.reshape(self.shape[:start] + (-1,))
     def reshape(self, shape): return Tensor(self.data.reshape(*shape), parents=(self,), local_grads=(lambda g: g.reshape(self.data.shape),))
+
+    # --- Reduce Ops ---
+    def sum(self, axis=None): return Tensor(self.data.sum(axis=axis, keepdims=True), parents=(self,), local_grads=(lambda g: np.ones(self.data.shape) * g,))
     def mean(self, axis=None):
         if axis is None: n = self.data.size
         elif isinstance(axis, tuple): n = np.prod([self.data.shape[a] for a in axis])
@@ -71,6 +64,7 @@ class Tensor:
         mask /= mask.sum(axis=axis, keepdims=True)
         return Tensor(out, parents=(self,), local_grads=(lambda g: g*mask,))
 
+    # --- Activation Functions ---
     def relu(self): return Tensor(np.maximum(self.data, 0), parents=(self,), local_grads=(lambda g: g * np.where(self.data > 0, 1, 0),))
     def sigmoid(self):
         s = 1.0 / (1.0 + np.exp(-self.data))
@@ -81,43 +75,28 @@ class Tensor:
         tt = t*t
         return Tensor(t, parents=(self,), local_grads=(lambda g: g * (1 - tt),))
 
+    # --- General NN ---
+    def one_hot(self, classes):
+        samples, = self.shape
+        hot = np.zeros((samples,classes))
+        hot[np.arange(samples), self.data.astype(dtype=np.int32)]=1
+        return Tensor(hot)
     def softmax(self):# subtract max to prevent overflow, softmax has shift invariance
         e = (self - Tensor(self.data.max(axis=1, keepdims=True))).exp()
         return e / e.sum(axis=1)
-
     def log_softmax(self):
         m = Tensor(self.data.max(axis=1, keepdims=True))
         shifted = self - m
         sl =  (shifted).exp().sum(axis=1).log()
         return shifted - sl
-
     def sparse_categorical_crossentropy(self, y):
         return -((y.one_hot(self.shape[1]) * self.log_softmax()).sum(axis=1).mean())
+    # https://jmlr.org/papers/v15/srivastava14a.html
+    def dropout(self, p=0.5):
+        mask = (np.random.uniform(size=self.shape) > p).astype(np.float32) / (1.0 - p)
+        return Tensor(self.data * mask, parents=(self,), local_grads=(lambda g: g * mask,))
 
-    @property
-    def shape(self): return self.data.shape
-
-    def _pool2d(self, pool_shape, stride: None | int | Tuple[int, ...], padding: int | Tuple[int, ...], func):
-        if stride is None: stride = pool_shape
-        if isinstance(padding, int): padding = (padding,padding)
-        if isinstance(stride, int): stride = (stride,stride)
-        N, c = self.shape[0], self.shape[-1]
-        ph, pw = pool_shape
-        cols, oh, ow = self.im2col(pool_shape, stride, padding)
-        return func(cols.reshape((N*oh*ow, ph*pw, c)), axis=1).reshape((N, oh, ow, c))
-
-    def avg_pool2d(self, pool_shape, stride: None | int | Tuple[int, ...]=None, padding: int | Tuple[int, ...]=0):
-        return self._pool2d(pool_shape, stride, padding, Tensor.mean)
-    def max_pool2d(self, pool_shape, stride: None | int | Tuple[int, ...]=None, padding: int | Tuple[int, ...]=0):
-        return self._pool2d(pool_shape, stride, padding, Tensor.max)
-
-    def conv2d(self, k, stride: int | Tuple[int, ...], padding: int | Tuple[int, ...]):
-        if isinstance(padding, int): padding = (padding,padding)
-        if isinstance(stride, int): stride = (stride,stride)
-        kh, kw, ci, co = k.shape
-        cols, oh, ow = self.im2col(k.shape, stride, padding)
-        k_flat = k.reshape((kh * kw * ci, co))
-        return (cols @ k_flat).reshape((self.shape[0], oh, ow, co))
+    # --- CNN/Pooling ---
 
     # Image to column transform
     # 
@@ -166,6 +145,30 @@ class Tensor:
 
         return Tensor(out, parents=(self,), local_grads=(backward,)), oh, ow
 
+    def conv2d(self, k, stride: int | Tuple[int, ...], padding: int | Tuple[int, ...]):
+        if isinstance(padding, int): padding = (padding,padding)
+        if isinstance(stride, int): stride = (stride,stride)
+        kh, kw, ci, co = k.shape
+        cols, oh, ow = self.im2col(k.shape, stride, padding)
+        k_flat = k.reshape((kh * kw * ci, co))
+        return (cols @ k_flat).reshape((self.shape[0], oh, ow, co))
+
+    def _pool2d(self, pool_shape, stride: None | int | Tuple[int, ...], padding: int | Tuple[int, ...], func):
+        if stride is None: stride = pool_shape
+        if isinstance(padding, int): padding = (padding,padding)
+        if isinstance(stride, int): stride = (stride,stride)
+        N, c = self.shape[0], self.shape[-1]
+        ph, pw = pool_shape
+        cols, oh, ow = self.im2col(pool_shape, stride, padding)
+        return func(cols.reshape((N*oh*ow, ph*pw, c)), axis=1).reshape((N, oh, ow, c))
+
+    def avg_pool2d(self, pool_shape, stride: None | int | Tuple[int, ...]=None, padding: int | Tuple[int, ...]=0):
+        return self._pool2d(pool_shape, stride, padding, Tensor.mean)
+    def max_pool2d(self, pool_shape, stride: None | int | Tuple[int, ...]=None, padding: int | Tuple[int, ...]=0):
+        return self._pool2d(pool_shape, stride, padding, Tensor.max)
+
+
+    # --- Autograd Engine ---
     def _toposort(self):
         topo, visited = [], set()
         def dfs(node):

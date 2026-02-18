@@ -3,14 +3,14 @@ from jdl.tensor import Tensor
 import numpy as np
 from typing import List, Tuple
 
-
 def get_model_params(model):
     params = []
     for _, value in vars(model).items(): params.extend(value.params())
     return params
 
-
+# --- NN Layers ---
 class BatchNorm:
+    # Paper: https://arxiv.org/pdf/1502.03167v3
     def __init__(self, size, epsilon=1e-6):
         self.weights = Tensor(np.ones(size))
         self.bias = Tensor(np.ones(size))
@@ -55,6 +55,7 @@ class Linear:
         x = x.reshape((-1, self.shape[0]))
         return x @ self.weights + self.bias
 
+# --- Optimizers ---
 class Optimizer:
     def __init__(self, params: List[Tensor]):
         self.params = params

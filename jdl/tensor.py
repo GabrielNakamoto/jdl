@@ -20,8 +20,7 @@ class Tensor:
         samples, = self.shape
         hot = np.zeros((samples,classes))
         hot[np.arange(samples), self.data.astype(dtype=np.int32)]=1
-        self.data = hot
-        return self
+        return Tensor(hot)
 
     def flatten(self):
         self.data = self.data.flatten()
@@ -70,7 +69,7 @@ class Tensor:
         return Tensor(s, parents=(self,), local_grads=(lambda g: g * s * (1 - s),))
     def tanh(self):
         e = np.exp(-2 * self.data)
-        t = (1 - e) * (1 + e)
+        t = (1 - e) / (1 + e)
         tt = t*t
         return Tensor(t, parents=(self,), local_grads=(lambda g: g * (1 - tt),))
 
@@ -78,8 +77,25 @@ class Tensor:
         e = (self - Tensor(self.data.max(axis=1, keepdims=True))).exp()
         return e / e.sum(axis=1)
 
+    def log_softmax(self):
+        m = Tensor(self.data.max(axis=1, keepdims=True))
+        shifted = self - m
+        sl =  (shifted).exp().sum(axis=1).log()
+        return shifted - sl
+
+    def sparse_categorical_crossentropy(self, y):
+        return -((y.one_hot(self.shape[1]) * self.log_softmax()).mean())
+
     @property
     def shape(self): return self.data.shape
+
+    def _pool2d(self, pool_shape, stride: int | Tuple[int, ...], padding: int | Tuple[int, ...], func):
+        if isinstance(padding, int): padding = (padding,padding)
+        if isinstance(stride, int): stride = (stride,stride)
+        N, c = self.shape[0], self.shape[-1]
+        ph, pw = pool_shape
+        cols, oh, ow = self.im2col(pool_shape, stride, padding)
+        return cols.reshape((N*oh*ow, ph*pw, c)).mean(axis=1).reshape((N, oh, ow, c))
 
     def avgpool2d(self, pool_shape, stride: int | Tuple[int, ...], padding: int | Tuple[int, ...]):
         if isinstance(padding, int): padding = (padding,padding)
@@ -89,9 +105,6 @@ class Tensor:
         cols, oh, ow = self.im2col(pool_shape, stride, padding)
         return cols.reshape((N*oh*ow, ph*pw, c)).mean(axis=1).reshape((N, oh, ow, c))
 
-    # im2col optimziation:
-    # - https://rileylearning.medium.com/convolution-layer-with-numpy-5d8cca3c2152
-    # - https://medium.com/@sundarramanp2000/different-implementations-of-the-ubiquitous-convolution-6a9269dbe77f
     def conv2d(self, k, stride: int | Tuple[int, ...], padding: int | Tuple[int, ...]):
         if isinstance(padding, int): padding = (padding,padding)
         if isinstance(stride, int): stride = (stride,stride)
@@ -100,6 +113,23 @@ class Tensor:
         k_flat = k.reshape((kh * kw * ci, co))
         return (cols @ k_flat).reshape((self.shape[0], oh, ow, co))
 
+    # Image to collumn transform
+    # 
+    # - https://rileylearning.medium.com/convolution-layer-with-numpy-5d8cca3c2152
+    # - https://medium.com/@sundarramanp2000/different-implementations-of-the-ubiquitous-convolution-6a9269dbe77f
+    # 
+    # Parameters:
+    # - 4d image tensor with shape NHWC
+    # - shape of kernel / window
+    # - kerne stride
+    # - image padding
+    # 
+    # - Let a window be a unique 2d range over which the kernel is applied
+    # - This transformation takes each unique window, respecting strides, padding 
+    #   and input/output channels, and flattens them into collumns
+    # 
+    # - Outputs a 2d collumn tensor with shape (# of windows, size of a window)
+    # 
     def im2col(self, kshape, stride, padding):
         N, h, w, c = self.shape
         kh, kw, = kshape[:2]
@@ -115,7 +145,6 @@ class Tensor:
                 cols[:, :, :, y, x, :]+=img[:, y:y_max:stride[0], x:x_max:stride[1], :]
 
         # extracts input patches (windows kernel is applied to) and stores as output collumns
-        # (# of patches, flattened size of patch)
         out = cols.reshape(N * oh * ow, c * kh * kw)
 
         def backward(g):

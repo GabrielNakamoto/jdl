@@ -9,18 +9,18 @@ def get_model_params(model):
     for _, value in vars(model).items(): params.extend(value.params())
     return params
 
-class AvgPool:
-    def __init__(
-        self,
-        pool_size: int | Tuple[int, int],
-        stride: int | Tuple[int, int],
-        padding: int | Tuple[int, int]=0
-    ):
-        self.stride, self.padding = stride, padding
-        self.pool_shape = (pool_size,pool_size)
-    def params(self): return ()
+
+class BatchNorm:
+    def __init__(self, size, epsilon=1e-6):
+        self.weights = Tensor(np.ones(size))
+        self.bias = Tensor(np.ones(size))
+        self.epsilon = epsilon
+    def params(self): return self.weights, self.bias
     def __call__(self, x):
-        return x.avgpool2d(self.pool_shape, self.stride, self.padding)
+        mean = x.mean()
+        var = ((x - mean).pow(2)).mean()
+        x = (x - mean) / (np.sqrt(var + self.epsilon))
+        return x * self.weights + self.bias
 
 class Conv2d:
     def __init__(
@@ -74,7 +74,7 @@ class ADAM(Optimizer):
         super().__init__(get_model_params(model))
         self.step_size, self.t = step_size, 0
         self.b1, self.b2 = decay_rates
-        self.m, self.v = [0.0] * len(params), [0.0] * len(params)
+        self.m, self.v = [0.0] * len(self.params), [0.0] * len(self.params)
     def step(self):
         self.t += 1
         for i, p in enumerate(self.params):

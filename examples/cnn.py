@@ -57,7 +57,10 @@ weight_decay = 1e-4  # L2 regularization
 
 batch_size = 64
 batches = x_train.shape[0] // batch_size
-for epoch in range(50):
+epochs = 50
+bar_width = 30
+
+for epoch in range(epochs):
     model.train()
     loss = 0.0
     for i, (x, y) in enumerate(sgd_batches(x_train, y_train, batch_size=batch_size, drop_last=True, augment=True)):
@@ -69,8 +72,14 @@ for epoch in range(50):
             p.grad += weight_decay * p.data
         loss += l.flatten().mean().data[0]
         optimizer.step()
-        print(f"{i+1}/{batches} batches processed", end='\r', flush=True)
+        
+        # Progress bar
+        pct = (i + 1) / batches
+        filled = int(bar_width * pct)
+        bar = '\033[92m' + '━' * filled + '\033[90m' + '━' * (bar_width - filled) + '\033[0m'
+        print(f"\r  epoch {epoch+1:02d}/{epochs} [{bar}] {i+1:3d}/{batches} loss={loss/(i+1):.4f}", end='', flush=True)
+    
     model.eval()
     y_pred = model(x_test)
     acc = (y_pred.data.argmax(axis=1) == y_test.data).mean()
-    print(f"Epoch: {epoch}\tloss={loss/batches:.4f}\ttest_acc={acc*100:.2f}%")
+    print(f"\r  epoch {epoch+1:02d}/{epochs} [\033[92m{'━' * bar_width}\033[0m] loss={loss/batches:.4f} acc={acc*100:.2f}%")

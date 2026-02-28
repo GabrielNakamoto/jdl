@@ -52,9 +52,9 @@ for epoch in range(50):
         optimizer.zero()
         y_hat = model(x)
         l = y_hat.sparse_categorical_crossentropy(y).backward()
-        loss += l.flatten().mean().data
+        loss += l.flatten().mean().data[0]
         optimizer.step()
-        print(f"{i}/{batches} batches processed", end='\r', flush=True)
+        print(f"{i+1}/{batches} batches processed", end='\r', flush=True)
     y_pred = model(x_test)
     acc = (y_pred.data.argmax(axis=1) == y_test.data).mean()
-    print(f"Epoch: {epoch}\tloss={loss}\ttest_acc={acc:.4f}")
+    print(f"Epoch: {epoch}\tloss={loss/batches:.4f}\ttest_acc={acc*100:.2f}")

@@ -5,7 +5,8 @@ from typing import List, Tuple
 
 def get_model_params(model):
     params = []
-    for _, value in vars(model).items(): params.extend(value.params())
+    for _, value in vars(model).items():
+        if hasattr(value, 'params'): params.extend(value.params())
     return params
 
 # --- NN Layers ---

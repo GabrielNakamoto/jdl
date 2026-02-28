@@ -7,39 +7,36 @@ import mnist_reader
 from jdl import Tensor
 from jdl.nn import Conv2d, Linear, BatchNorm, ADAM
 
-def sgd_batches(X, y, batch_size=50):
+def sgd_batches(X, y, batch_size=50, drop_last=False):
     N = X.data.shape[0]
-    indices = [i for i in range(N)]
+    indices = list(range(N))
     random.shuffle(indices)
     for i in range(0, N, batch_size):
         j = indices[i:i+batch_size]
+        if drop_last and len(j) < batch_size: continue
         yield Tensor(X.data.take(j, axis=0)), Tensor(y.data.take(j, axis=0))
 
 def wrap_samples(x, y): return Tensor(x.reshape(-1, 28, 28, 1) / 255.0), Tensor(y)
 
 class Model:
     def __init__(self):
-        # Conv block 1
-        self.l1 = Conv2d(1, 32, 5)
-        self.l2 = Conv2d(32, 32, 5)
-        self.l3 = BatchNorm(32)
+        self.l1 = Conv2d(1, 32, 3)
+        self.l2 = BatchNorm(32)
 
-        # Conv block 2
-        self.l4 = Conv2d(32, 64, 3)
-        self.l5 = Conv2d(64, 64, 3)
-        self.l6 = BatchNorm(64)
+        self.l3 = Conv2d(32, 64, 3)
+        self.l4 = BatchNorm(64)
 
-        # Fully-connected
-        self.l7 = Linear(576, 10)
+        self.l5 = Linear(64 * 5 * 5, 128)
+        self.l6 = Linear(128, 10)
     def __call__(self, x):
-        x = self.l1(x).relu()
-        x = self.l2(x)
-        x = self.l3(x).relu().max_pool2d((2,2)).dropout(0.25)
+        x = self.l1(x)
+        x = self.l2(x).relu().max_pool2d((2,2))
 
-        x = self.l4(x).relu()
-        x = self.l5(x)
-        x = self.l6(x).relu().max_pool2d((2,2)).dropout(0.25).flatten(start=1)
-        return self.l7(x)
+        x = self.l3(x)
+        x = self.l4(x).relu().max_pool2d((2,2)).flatten(start=1)
+
+        x = self.l5(x).relu().dropout(0.3)
+        return self.l6(x)
 
 x_train, y_train = wrap_samples(*mnist_reader.load_mnist('datasets/fashion', kind='train'))
 x_test, y_test = wrap_samples(*mnist_reader.load_mnist('datasets/fashion', kind='t10k'))
@@ -47,16 +44,17 @@ x_test, y_test = wrap_samples(*mnist_reader.load_mnist('datasets/fashion', kind=
 model = Model()
 optimizer = ADAM(model)
 
-batch_size = 200
+batch_size = 64
 batches = x_train.shape[0] // batch_size
-for epoch in range(20):
+for epoch in range(50):
     loss = 0.0
-    for i, (x, y) in enumerate(sgd_batches(x_train, y_train, batch_size=200)):
+    for i, (x, y) in enumerate(sgd_batches(x_train, y_train, batch_size=batch_size, drop_last=True)):
         optimizer.zero()
         y_hat = model(x)
-        l = y_hat.sparse_categorical_crossentropy(y)
-        l.backward()
+        l = y_hat.sparse_categorical_crossentropy(y).backward()
         loss += l.flatten().mean().data
         optimizer.step()
         print(f"{i}/{batches} batches processed", end='\r', flush=True)
-    print(f"Epoch: {epoch}\tloss={loss}")
+    y_pred = model(x_test)
+    acc = (y_pred.data.argmax(axis=1) == y_test.data).mean()
+    print(f"Epoch: {epoch}\tloss={loss}\ttest_acc={acc:.4f}")

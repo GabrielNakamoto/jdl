@@ -122,12 +122,12 @@ class Tensor:
         shape = (N, oh, ow, kh, kh, c)
 
         strides = (
-            img.strides[0],
-            stride[0] * img.strides[1],
-            stride[1] * img.strides[2],
-            img.strides[1],
-            img.strides[2],
-            img.strides[3],
+            img.strides[0], # N: next batch image
+            stride[0] * img.strides[1], # oh: jump conv stride (vert)
+            stride[1] * img.strides[2], # ow: jump conv stride (hor)
+            img.strides[1], # kh: move 1 row within window
+            img.strides[2], # kw: move 1 col within window
+            img.strides[3], # c: move 1 channel
         )
         # extracts input patches (windows kernel is applied to) and stores as output collumns
         cols = as_strided(img, shape=shape, strides=strides).copy().reshape(N * oh * ow, c * kh * kw)

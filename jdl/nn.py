@@ -10,6 +10,29 @@ def get_model_params(model):
     return params
 
 # --- NN Layers ---
+class LSTM:
+    def __init__(self, input_size, hidden_size):
+        self.input_size, self.hidden_size = input_size, hidden_size
+        def make_weights(in_dim, out_dim):
+            return Tensor(np.random.randn(in_dim, out_dim) * np.sqrt(2.0 / in_dim))
+        gates = ['i', 'f', 'o', 'c']
+        self.w_x = {g: make_weights(input_size, hidden_size) for g in gates}
+        self.w_h = {g: make_weights(hidden_size, hidden_size) for g in gates}
+        self.b  = {g:Tensor(np.zeros(hidden_size)) for g in gates}
+    def params(self): return (*self.w_x.values(), *self.w_h.values(), *self.b.values())
+    def __call__(self, x, state=None):
+        batch_size = x.data.shape[0]
+        if state is None: h, c = Tensor(np.zeros((batch_size, self.hidden_size))), Tensor(np.zeros((batch_size, self.hidden_size)))
+        else: h, c = state
+
+        i = (x @ self.w_x["i"] + h @ self.w_h["i"] + self.b["i"]).sigmoid()
+        o = (x @ self.w_x["o"] + h @ self.w_h["o"] + self.b["o"]).sigmoid()
+        f = (x @ self.w_x["f"] + h @ self.w_h["f"] + self.b["f"]).sigmoid()
+        c_tilde = (x @ self.w_x["c"] + h @ self.w_h["c"] + self.b["c"]).tanh()
+        c = f * c + i * c_tilde
+        h = o * c.tanh()
+        return h, (h,c)
+
 class BatchNorm:
     # Paper: https://arxiv.org/pdf/1502.03167v3
     def __init__(self, size, epsilon=1e-6):

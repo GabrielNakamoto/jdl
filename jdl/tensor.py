@@ -15,6 +15,8 @@ class Tensor:
 
     @property
     def shape(self): return self.data.shape
+    @staticmethod
+    def scalar(s): return Tensor(np.array(s))
 
     def zero_grad(self):
         if self.grad is not None: self.grad.fill(0)
@@ -35,7 +37,10 @@ class Tensor:
         return (self - mean) / (var + eps).sqrt()
 
     # --- Binary Ops ---
-    def __add__(self, other): return Tensor(self.data + other.data, parents=(self, other), local_grads=(lambda g:g, lambda g:g))
+    def __add__(self, other: Union[Tensor, float]):
+        ist = isinstance(other, Tensor)
+        factor = other if not ist else other.data
+        return Tensor(self.data + factor, parents=(self,other) if ist else (self,), local_grads=(lambda g:g, lambda g:g))
     def __mul__(self, other: Union[Tensor, float]):
         ist = isinstance(other, Tensor)
         factor = other if not ist else other.data
@@ -79,6 +84,7 @@ class Tensor:
 
     # --- Activation Functions ---
     def relu(self): return Tensor(np.maximum(self.data, 0), parents=(self,), local_grads=(lambda g: g * np.where(self.data > 0, 1, 0),))
+    # https://arxiv.org/pdf/1606.08415
     def gelu(self): return 0.5 * self * (1 + (np.sqrt(2.0 / np.pi) * (self + 0.044715 * (self ** 3))).tanh())
     def sigmoid(self):
         s = 1.0 / (1.0 + np.exp(-self.data))

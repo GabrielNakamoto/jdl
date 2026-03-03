@@ -30,7 +30,7 @@ class MultiHeadAttention:
 
 class Embedding:
     def __init__(self, vocab_size, embed_size):
-        self.weight = Tensor(np.random.uniform(-1, 1, (vocab_size, embed_size)))
+        self.weight = Tensor(np.random.normal(0.0, 0.02, (vocab_size, embed_size)))
     def params(self): return self.weight,
     def __call__(self, indices): # indices (batch, seq_len)
         return self.weight[indices]

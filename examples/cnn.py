@@ -32,8 +32,12 @@ class Model:
         self.l3 = Conv2d(32, 64, 3)
         self.l4 = BatchNorm(64)
 
-        self.l5 = Linear(64 * 5 * 5, 128)
-        self.l6 = Linear(128, 10)
+        self.l5 = Conv2d(64, 128, 3)
+        self.l6 = BatchNorm(128)
+
+        self.l7 = Linear(128 * 3 * 3, 128)
+        self.l8 = Linear(128, 10)
+
         self.training = True
     def train(self): self.training = True
     def eval(self): self.training = False
@@ -43,10 +47,13 @@ class Model:
         x = self.l2(x).relu().max_pool2d((2,2)).dropout(p)
 
         x = self.l3(x)
-        x = self.l4(x).relu().max_pool2d((2,2)).flatten(start=1).dropout(p)
+        x = self.l4(x).relu().max_pool2d((2,2)).dropout(p)
 
-        x = self.l5(x).relu().dropout(0.5 if self.training else 0.0)
-        return self.l6(x)
+        x = self.l5(x)
+        x = self.l6(x).relu().flatten(start=1).dropout(p)
+
+        x = self.l7(x).relu().dropout(0.5 if self.training else 0.0)
+        return self.l8(x)
 
 x_train, y_train = wrap_samples(*mnist_reader.load_mnist('datasets/fashion', kind='train'))
 x_test, y_test = wrap_samples(*mnist_reader.load_mnist('datasets/fashion', kind='t10k'))
@@ -68,8 +75,7 @@ for epoch in range(epochs):
         y_hat = model(x)
         l = y_hat.sparse_categorical_crossentropy(y).backward()
         # Apply weight decay (L2 regularization)
-        for p in optimizer.params:
-            p.grad += weight_decay * p.data
+        for p in optimizer.params: p.grad += weight_decay * p.data
         loss += l.flatten().mean().data[0]
         optimizer.step()
         

@@ -27,8 +27,8 @@ class Model:
         self.l2 = Linear(256, 128)
         self.l3 = Linear(128, 10)
     def __call__(self, x):
-        x = self.l1(x).relu()
-        x = self.l2(x).relu()
+        x = self.l1(x).relu().dropout(0.3)
+        x = self.l2(x).relu().dropout(0.3)
         return self.l3(x)
 
 model = Model()

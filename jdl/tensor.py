@@ -121,7 +121,7 @@ class Tensor:
         if causal_mask: # Dont allow tokens to 'look' at future tokens
             mask = np.triu(np.full((seq_len, seq_len), -np.inf), k=1)
             scores = scores + Tensor(mask, requires_grad=False)
-        attn = scores.softmax() # (batch, n_heads, seq, seq)
+        attn = scores.dropout(0.1).softmax() # (batch, n_heads, seq, seq)
         return attn @ v # (batch, n_heads, seq, head_dim)
 
     # --- CNN/Pooling ---

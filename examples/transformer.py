@@ -13,7 +13,7 @@ class FeedForward:
         self.c_proj = Linear(hidden_dim, dim)
     def params(self): return *self.c_fc.params(), *self.c_proj.params()
     def __call__(self, x):
-        return self.c_proj(self.c_fc(x).relu())
+        return self.c_proj(self.c_fc(x).gelu())
 
 class TransformerBlock:
     def __init__(self, dim, n_heads):
@@ -23,13 +23,18 @@ class TransformerBlock:
         self.ff_norm = LayerNorm(dim)
     def params(self): return *self.attn_norm.params(), *self.ff_norm.params(), *self.attn.params(), *self.ff.params()
     def __call__(self, x, causal=False):
-        h = x + self.attn(self.attn_norm(x), causal=causal)     # Residual normalized attn  (batch, seqln, dims)
-        return h + self.ff(self.ff_norm(h))    # Residual normalized positionwise-FF
+        h = x + self.attn(self.attn_norm(x), causal=causal).dropout(0.1)     # Residual normalized attn  (batch, seqln, dims)
+        return h + self.ff(self.ff_norm(h)).dropout(0.1)    # Residual normalized positionwise-FF
 
 
 # Transformer Decoder
+
+# Why is this considered just a decoder and not an encoder?
+# - pure self attention
+# - normal architecture;
+# 
 class NanoGPT:
-    def __init__(self, vocab_size, dim=128, n_heads=4, n_layers=4, max_context=512):
+    def __init__(self, vocab_size, dim, n_heads, n_layers, max_context=512):
         self.tok_emb = Embedding(vocab_size, dim)
         self.pos_emb = Embedding(max_context, dim)
         self.blocks = [TransformerBlock(dim, n_heads) for _ in range(n_layers)]
@@ -41,7 +46,7 @@ class NanoGPT:
         # Embed tokens + positions
         tok_emb = self.tok_emb(tokens)
         pos_emb = self.pos_emb(range(seq_len))
-        x = tok_emb + pos_emb
+        x = (tok_emb + pos_emb).dropout(0.1)
 
         # Transformer blocks
         for block in self.blocks: x = block(x, causal=True)
@@ -71,10 +76,10 @@ idx_to_char = {i: c for c, i in char_to_idx.items()}
 encoder = lambda s: [char_to_idx[c] for c in s]
 decoder = lambda t: ''.join(idx_to_char[i] for i in t)
 
-num_steps = 5000
+num_steps = 10000
 print_every = 100
 
-model = NanoGPT(vocab_size)
+model = NanoGPT(vocab_size, 384, 8, 8, 256)
 optimizer = ADAM(model, step_size=3e-4)
 
 data = np.array(encoder(text))
@@ -94,7 +99,7 @@ def get_lr(step, warmup_steps=100, max_steps=5000, max_lr=3e-4, min_lr=1e-5):
 for step in tqdm(range(num_steps), desc="Training"):
     optimizer.step_size = get_lr(step)
     optimizer.zero()
-    x, y = get_batch(batch_size=32, context_len=64)
+    x, y = get_batch(batch_size=32, context_len=256)
     logits = model(x)
     l = logits.sparse_categorical_crossentropy(y).backward()
     optimizer.step()

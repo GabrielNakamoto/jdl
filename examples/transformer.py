@@ -71,7 +71,7 @@ idx_to_char = {i: c for c, i in char_to_idx.items()}
 encoder = lambda s: [char_to_idx[c] for c in s]
 decoder = lambda t: ''.join(idx_to_char[i] for i in t)
 
-num_steps = 1000
+num_steps = 5000
 print_every = 100
 
 model = NanoGPT(vocab_size)
@@ -85,7 +85,14 @@ def get_batch(batch_size, context_len):
     y = np.stack([data[i+1:i+context_len+1] for i in starts])
     return x, Tensor(y)
 
+def get_lr(step, warmup_steps=100, max_steps=5000, max_lr=3e-4, min_lr=1e-5):
+    if step < warmup_steps:
+        return max_lr * step / warmup_steps
+    decay_ratio = (step - warmup_steps) / (max_steps - warmup_steps)
+    return min_lr + 0.5 * (max_lr - min_lr) * (1 + np.cos(np.pi * decay_ratio))
+
 for step in tqdm(range(num_steps), desc="Training"):
+    optimizer.step_size = get_lr(step)
     optimizer.zero()
     x, y = get_batch(batch_size=32, context_len=64)
     logits = model(x)

@@ -115,19 +115,21 @@ class Tensor:
         return shifted - sl
     def sparse_categorical_crossentropy(self, y):
         return -((y.one_hot(self.shape[-1]) * self.log_softmax()).sum(axis=-1).mean())
-    def dropout(self, p=0.5):
+    def dropout(self, p=0.5, training=True):
         # Paper: https://jmlr.org/papers/v15/srivastava14a.html
+        if not training:
+            return self
         mask = (np.random.uniform(size=self.shape) > p).astype(np.float32) / (1.0 - p)
         return Tensor(self.data * mask, parents=(self,), local_grads=(lambda g: g * mask,))
     # https://arxiv.org/pdf/1706.03762v7
-    def scaled_dot_product_attention(self, k, v, causal_mask=False): # (q, k, v) <- (batch, n_heads, seq, head_dim)
+    def scaled_dot_product_attention(self, k, v, causal_mask=False, training=True): # (q, k, v) <- (batch, n_heads, seq, head_dim)
         seq_len = self.shape[2]
         scale = Tensor(np.array(1.0 / np.sqrt(k.shape[-1])), requires_grad=False)
         scores = (self @ k.transpose(2, 3)) * scale # (batch, n_heads, seq, seq)
         if causal_mask: # Dont allow tokens to 'look' at future tokens
             mask = np.triu(np.full((seq_len, seq_len), -np.inf), k=1)
             scores = scores + Tensor(mask, requires_grad=False)
-        attn = scores.dropout(0.1).softmax() # (batch, n_heads, seq, seq)
+        attn = scores.dropout(0.1, training=training).softmax() # (batch, n_heads, seq, seq)
         return attn @ v # (batch, n_heads, seq, head_dim)
 
     # --- CNN/Pooling ---

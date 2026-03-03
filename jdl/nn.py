@@ -19,13 +19,13 @@ class MultiHeadAttention:
         self.n_heads = n_heads
         self.head_dim = dim // n_heads
     def params(self): return *self.fused_qkv.params(), *self.proj.params()
-    def __call__(self, x, causal): # (batch, seq_len, dim)
+    def __call__(self, x, causal, training=True): # (batch, seq_len, dim)
         bchsz, seqln = x.shape[:2]
         xqkv = self.fused_qkv(x).reshape((bchsz, seqln, 3, self.n_heads, self.head_dim))
         q = xqkv[:, :, 0, :, :].transpose(1, 2)
         k = xqkv[:, :, 1, :, :].transpose(1, 2)
         v = xqkv[:, :, 2, :, :].transpose(1, 2)
-        attn = q.scaled_dot_product_attention(k, v, causal_mask=causal).transpose(2, 1)
+        attn = q.scaled_dot_product_attention(k, v, causal_mask=causal, training=training).transpose(2, 1)
         return self.proj(attn.reshape((bchsz, seqln, self.dim)))
 
 class Embedding:

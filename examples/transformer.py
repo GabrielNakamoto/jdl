@@ -22,9 +22,9 @@ class TransformerBlock:
         self.attn_norm = LayerNorm(dim)
         self.ff_norm = LayerNorm(dim)
     def params(self): return *self.attn_norm.params(), *self.ff_norm.params(), *self.attn.params(), *self.ff.params()
-    def __call__(self, x, causal=False):
-        h = x + self.attn(self.attn_norm(x), causal=causal).dropout(0.1)     # Residual normalized attn  (batch, seqln, dims)
-        return h + self.ff(self.ff_norm(h)).dropout(0.1)    # Residual normalized positionwise-FF
+    def __call__(self, x, causal=False, training=True):
+        h = x + self.attn(self.attn_norm(x), causal=causal, training=training).dropout(0.1, training=training)     # Residual normalized attn  (batch, seqln, dims)
+        return h + self.ff(self.ff_norm(h)).dropout(0.1, training=training)    # Residual normalized positionwise-FF
 
 
 # Transformer Decoder
@@ -41,15 +41,15 @@ class NanoGPT:
         self.ln_f = LayerNorm(dim)
         self.lm_head = Linear(dim, vocab_size)
         self.max_context = max_context
-    def __call__(self, tokens): # (batch_size, seq_len)
+    def __call__(self, tokens, training=True): # (batch_size, seq_len)
         bchsz, seq_len = tokens.shape
         # Embed tokens + positions
         tok_emb = self.tok_emb(tokens)
         pos_emb = self.pos_emb(range(seq_len))
-        x = (tok_emb + pos_emb).dropout(0.1)
+        x = (tok_emb + pos_emb).dropout(0.1, training=training)
 
         # Transformer blocks
-        for block in self.blocks: x = block(x, causal=True)
+        for block in self.blocks: x = block(x, causal=True, training=training)
 
         # Project to vocabulary
         logits = self.lm_head(self.ln_f(x)) # (batch, seq_len, vocab_size)
@@ -57,7 +57,7 @@ class NanoGPT:
     def generate(self, tokens, max_new_tokens, temperature=1.0):
         for _ in range(max_new_tokens):
             context = tokens[:, -self.max_context:]
-            logits = self(context)
+            logits = self(context, training=False)
             logits = logits[:, -1, :] / temperature
             probs = logits.softmax().data
             next_token = np.random.choice(len(probs[0]), p=probs[0])

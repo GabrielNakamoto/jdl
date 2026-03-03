@@ -23,7 +23,7 @@ class TransformerBlock:
         self.ff_norm = RMSNorm(dim)
     def params(self): return *self.attn_norm.params(), *self.ff_norm.params(), *self.attn.params(), *self.ff.params()
     def __call__(self, x, causal=False):
-        h = x + self.attn(self.attn_norm(x), causal=causal, training=training).dropout(0.1, training=training)     # Residual normalized attn  (batch, seqln, dims)
+        h = x + self.attn(self.attn_norm(x), causal=causal)     # Residual normalized attn  (batch, seqln, dims)
         return h + self.ff(self.ff_norm(h))    # Residual normalized positionwise-FF
 
 

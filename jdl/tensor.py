@@ -127,7 +127,7 @@ class Tensor:
         scale = Tensor(np.array(1.0 / np.sqrt(k.shape[-1])), requires_grad=False)
         scores = (self @ k.transpose(2, 3)) * scale # (batch, n_heads, seq, seq)
         if causal_mask: # Dont allow tokens to 'look' at future tokens
-            mask = np.triu(np.full((seq_len, seq_len), -np.inf), k=1)
+            mask = np.triu(np.full((seq_len, seq_len), -1e9), k=1)
             scores = scores + Tensor(mask, requires_grad=False)
         attn = scores.dropout(0.1, training=training).softmax() # (batch, n_heads, seq, seq)
         return attn @ v # (batch, n_heads, seq, head_dim)

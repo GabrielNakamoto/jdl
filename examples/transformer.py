@@ -64,7 +64,6 @@ class NanoGPT:
             tokens = np.concatenate([tokens, [[next_token]]], axis=1)
         return tokens
 
-num_steps = 100
 text = open("datasets/dostoevsky.txt").read()
 chars = sorted(set(text))
 vocab_size = len(chars)
@@ -79,7 +78,7 @@ decoder = lambda t: ''.join(idx_to_char[i] for i in t)
 num_steps = 10000
 print_every = 100
 
-model = NanoGPT(vocab_size, 384, 8, 8, 256)
+model = NanoGPT(vocab_size, 256, 8, 6, 128)
 optimizer = ADAM(model, step_size=3e-4)
 
 data = np.array(encoder(text))
@@ -99,7 +98,7 @@ def get_lr(step, warmup_steps=100, max_steps=5000, max_lr=3e-4, min_lr=1e-5):
 for step in tqdm(range(num_steps), desc="Training"):
     optimizer.step_size = get_lr(step)
     optimizer.zero()
-    x, y = get_batch(batch_size=32, context_len=256)
+    x, y = get_batch(batch_size=32, context_len=model.max_context)
     logits = model(x)
     l = logits.sparse_categorical_crossentropy(y).backward()
     optimizer.step()

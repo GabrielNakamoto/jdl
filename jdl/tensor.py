@@ -30,6 +30,7 @@ class Tensor:
         cached = self.data ** (scalar-1)
         return Tensor(cached*self.data, parents=(self,), local_grads=(lambda g: g*scalar*cached,))
     def sqrt(self): return self ** 0.5
+    def normalize(self, mean, var, eps=1e-6): return (self - mean) / (var + eps).sqrt()
 
     # --- Binary Ops ---
     def __add__(self, other): return Tensor(self.data + other.data, parents=(self, other), local_grads=(lambda g:g, lambda g:g))

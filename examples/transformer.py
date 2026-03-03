@@ -2,8 +2,9 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import numpy as np
 from jdl import Tensor
-from jdl.nn import Linear
+from jdl.nn import Linear, LayerNorm, Embedding
 
 class MultiHeadAttention:
     def __init__(self, dim, n_heads):
@@ -26,9 +27,37 @@ class MultiHeadAttention:
         # 5. Concatenate heads and project back to single dimension from (attn_q, attn_k, attn_v) -> x
         return self.proj_out(attn.reshape(x.shape[0], x.shape[1], self.dim)) # (batch, seq, dim)
 
-class TransformerBlock:
-    def __init__(self):
-        self.attn = MultiHeadAttention(0,0)
-        pass
+class FeedForward:
+    def __init__(self, dim, hidden_dim):
+        self.c_fc = Linear(dim, hidden_dim)
+        self.c_proj = Linear(hidden_dim, dim)
     def __call__(self, x):
-        pass
+        return self.c_proj(self.c_fc(x).relu())
+
+class TransformerBlock:
+    def __init__(self, dim, n_heads):
+        self.attn = MultiHeadAttention(dim, n_heads)
+        self.ff = FeedForward(dim, 4*dim)
+        self.attn_norm = LayerNorm(dim)
+        self.ff_norm = LayerNorm(dim)
+    def __call__(self, x):
+        h = x + self.attn(self.attn_norm(x))     # Residual normalized attn 
+        return h + self.ff(self.ff_norm(h))    # Residual normalized positionwise-FF
+
+class Transformer:
+    def __init__(self, dim, n_heads, n_layers, vocab_size, max_context=1024):
+        self.tk_emb = Embedding(vocab_size, dim)
+        self.pos_emb = Embedding(max_context, dim)
+        self.layers = [TransformerBlock(dim, n_heads) for _ in range(n_layers)]
+        self.f_norm = LayerNorm(dim)
+        self.f_linear = Linear(dim, vocab_size)
+        self.allpos = Tensor(np.arange(0, max_context)).reshape((1, -1))
+    def __call__(self, tokens): # (batch_size, seq_len)
+        bchsz, seqln = tokens.shape
+        tok_emb = self.tk_emb(tokens)
+        pos = self.allpos[:, :seqln]
+        h = tok_emb + self.pos_emb(pos)
+        for l in self.layers: h = l(h)
+
+        logits = self.f_linear(self.f_norm(h))
+        return logits

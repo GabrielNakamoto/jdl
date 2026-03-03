@@ -39,25 +39,28 @@ class LSTM:
         return h, (h,c)
 
 class LayerNorm:
-    def __init__(self):
-        pass
-    def params(self): return ()
+    # https://arxiv.org/pdf/1607.06450v1
+    def __init__(self, hidden_size):
+        self.hidden_size = hidden_size
+        self.weights = Tensor(np.ones(hidden_size))
+        self.bias = Tensor(np.zeros(hidden_size))
+    def params(self): return self.weights, self.bias
     def __call__(self, x):
-        pass
+        mean = x.mean(axis=-1)
+        var = ((x - mean) ** 2).mean(axis=-1)
+        return x.normalize(mean, var) * self.weights + self.bias
 
 class BatchNorm:
     # Paper: https://arxiv.org/pdf/1502.03167v3
-    def __init__(self, size, epsilon=1e-6):
+    def __init__(self, size):
         self.weights = Tensor(np.ones(size))
         self.bias = Tensor(np.zeros(size))
-        self.epsilon = Tensor(np.array(epsilon))
     def params(self): return self.weights, self.bias
     def __call__(self, x):
         axis = tuple(range(x.data.ndim - 1))
         mean = x.mean(axis=axis)
         var = ((x - mean) ** 2).mean(axis=axis)
-        x = (x - mean) / (var + self.epsilon).sqrt()
-        return x * self.weights + self.bias
+        return x.normalize(mean, var) * self.weights + self.bias
 
 class Conv2d:
     def __init__(

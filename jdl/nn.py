@@ -10,14 +10,19 @@ def get_model_params(model):
     return params
 
 # --- NN Layers ---
+class Embedding:
+    def __init__(self, vocab_size, embed_size):
+        self.weight = Tensor(np.random.uniform(-1, 1, (vocab_size, embed_size)))
+    def params(self): return (self.weight)
+    def __call__(self, indices): # indices (batch, seq_len)
+        return [Tensor(f) for f in self.weight.data[indices]] # (batch, seq_len, embed_dim)
+
 class LSTM:
     def __init__(self, input_size, hidden_size):
         self.input_size, self.hidden_size = input_size, hidden_size
-        def make_weights(in_dim, out_dim):
-            return Tensor(np.random.randn(in_dim, out_dim) * np.sqrt(2.0 / in_dim))
         gates = ['i', 'f', 'o', 'c']
-        self.w_x = {g: make_weights(input_size, hidden_size) for g in gates}
-        self.w_h = {g: make_weights(hidden_size, hidden_size) for g in gates}
+        self.w_x = {g: Tensor.he_init((input_size, hidden_size)) for g in gates}
+        self.w_h = {g: Tensor.he_init((hidden_size, hidden_size)) for g in gates}
         self.b  = {g:Tensor(np.zeros(hidden_size)) for g in gates}
     def params(self): return (*self.w_x.values(), *self.w_h.values(), *self.b.values())
     def __call__(self, x, state=None):
@@ -32,6 +37,13 @@ class LSTM:
         c = f * c + i * c_tilde
         h = o * c.tanh()
         return h, (h,c)
+
+class LayerNorm:
+    def __init__(self):
+        pass
+    def params(self): return ()
+    def __call__(self, x):
+        pass
 
 class BatchNorm:
     # Paper: https://arxiv.org/pdf/1502.03167v3

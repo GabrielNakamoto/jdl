@@ -48,9 +48,18 @@ class Tensor:
     def __truediv__(self, other): return self * (other**-1)
     def __rtruediv__(self, other): return other * (self**-1)
 
+    # --- Data Access ---
+    def __getitem__(self, idx):
+        def grad(g):
+            grad = np.zeros_like(self.data)
+            np.add.at(grad, idx, g)
+            return grad
+        return Tensor(self.data[idx], parents=(self,), local_grads=(grad,))
+
     # --- Reshape Ops ---
     def flatten(self, start=0): return self.reshape(self.shape[:start] + (-1,))
     def reshape(self, shape): return Tensor(self.data.reshape(*shape), parents=(self,), local_grads=(lambda g: g.reshape(self.data.shape),))
+    def transpose(self, dim0=1, dim1=0): return Tensor(self.data.swapaxes(dim0, dim1), parents=(self,), local_grads=(lambda g: g.swapaxes(dim0, dim1)))
 
     # --- Reduce Ops ---
     def sum(self, axis=None): return Tensor(self.data.sum(axis=axis, keepdims=True), parents=(self,), local_grads=(lambda g: np.ones(self.data.shape) * g,))
@@ -77,14 +86,17 @@ class Tensor:
         return Tensor(t, parents=(self,), local_grads=(lambda g: g * (1 - tt),))
 
     # --- General NN ---
+    @staticmethod
+    def he_init(shape):
+        return Tensor(np.random.normal(0, np.sqrt(2.0/shape[0]), shape))
     def one_hot(self, classes):
         samples, = self.shape
         hot = np.zeros((samples,classes))
         hot[np.arange(samples), self.data.astype(dtype=np.int32)]=1
         return Tensor(hot)
-    def softmax(self):# subtract max to prevent overflow, softmax has shift invariance
-        e = (self - Tensor(self.data.max(axis=1, keepdims=True))).exp()
-        return e / e.sum(axis=1)
+    def softmax(self, axis=-1):# subtract max to prevent overflow, softmax has shift invariance
+        e = (self - Tensor(self.data.max(axis=axis, keepdims=True))).exp()
+        return e / e.sum(axis=axis)
     def log_softmax(self):
         m = Tensor(self.data.max(axis=1, keepdims=True))
         shifted = self - m
@@ -96,6 +108,12 @@ class Tensor:
         # Paper: https://jmlr.org/papers/v15/srivastava14a.html
         mask = (np.random.uniform(size=self.shape) > p).astype(np.float32) / (1.0 - p)
         return Tensor(self.data * mask, parents=(self,), local_grads=(lambda g: g * mask,))
+    # https://arxiv.org/pdf/1706.03762v7
+    def scaled_dot_product_attention(self, k, v): # (q, k, v) <- (batch, n_heads, seq, head_dim)
+        scale = Tensor(np.array(1.0 / np.sqrt(k.shape[-1])), requires_grad=False)
+        scores = (self @ k.transpose(2, 3)) * scale # (batch, n_heads, seq, seq)
+        attn = scores.softmax() # (batch, n_heads, seq, seq)
+        return attn @ v # (batch, n_heads, seq, head_dim)
 
     # --- CNN/Pooling ---
     def im2col(self, kshape, stride, padding):

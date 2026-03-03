@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Union, Tuple
+from typing import Required, Union, Tuple
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
 
@@ -30,7 +30,9 @@ class Tensor:
         cached = self.data ** (scalar-1)
         return Tensor(cached*self.data, parents=(self,), local_grads=(lambda g: g*scalar*cached,))
     def sqrt(self): return self ** 0.5
-    def normalize(self, mean, var, eps=1e-6): return (self - mean) / (var + eps).sqrt()
+    def normalize(self, mean, var, eps = 1e-6):
+        eps = Tensor(np.array(eps), requires_grad=False)
+        return (self - mean) / (var + eps).sqrt()
 
     # --- Binary Ops ---
     def __add__(self, other): return Tensor(self.data + other.data, parents=(self, other), local_grads=(lambda g:g, lambda g:g))
@@ -38,7 +40,7 @@ class Tensor:
         ist = isinstance(other, Tensor)
         factor = other if not ist else other.data
         return Tensor(self.data * factor, parents=(self,other) if ist else (self,), local_grads=(lambda g: g*factor, lambda g: g*self.data))
-    def __matmul__(self, other): return Tensor(self.data @ other.data, parents=[self, other], local_grads=(lambda g: g @ other.data.T, lambda g: self.data.T @ g))
+    def __matmul__(self, other): return Tensor(self.data @ other.data, parents=[self, other], local_grads=(lambda g: g @ other.data.swapaxes(-2, -1), lambda g: self.data.swapaxes(-2, -1) @ g))
 
     # --- Composed/Reverse Ops ---
     def __radd__(self, other): return self + other
@@ -60,7 +62,7 @@ class Tensor:
     # --- Reshape Ops ---
     def flatten(self, start=0): return self.reshape(self.shape[:start] + (-1,))
     def reshape(self, shape): return Tensor(self.data.reshape(*shape), parents=(self,), local_grads=(lambda g: g.reshape(self.data.shape),))
-    def transpose(self, dim0=1, dim1=0): return Tensor(self.data.swapaxes(dim0, dim1), parents=(self,), local_grads=(lambda g: g.swapaxes(dim0, dim1)))
+    def transpose(self, dim0=1, dim1=0): return Tensor(self.data.swapaxes(dim0, dim1), parents=(self,), local_grads=(lambda g: g.swapaxes(dim0, dim1),))
 
     # --- Reduce Ops ---
     def sum(self, axis=None): return Tensor(self.data.sum(axis=axis, keepdims=True), parents=(self,), local_grads=(lambda g: np.ones(self.data.shape) * g,))
@@ -77,6 +79,7 @@ class Tensor:
 
     # --- Activation Functions ---
     def relu(self): return Tensor(np.maximum(self.data, 0), parents=(self,), local_grads=(lambda g: g * np.where(self.data > 0, 1, 0),))
+    def gelu(self): return 0.5 * self * (1 + (np.sqrt(2.0 / np.pi) * (self + 0.044715 * (self ** 3))).tanh())
     def sigmoid(self):
         s = 1.0 / (1.0 + np.exp(-self.data))
         return Tensor(s, parents=(self,), local_grads=(lambda g: g * s * (1 - s),))
@@ -91,28 +94,33 @@ class Tensor:
     def he_init(shape):
         return Tensor(np.random.normal(0, np.sqrt(2.0/shape[0]), shape))
     def one_hot(self, classes):
-        samples, = self.shape
-        hot = np.zeros((samples,classes))
-        hot[np.arange(samples), self.data.astype(dtype=np.int32)]=1
-        return Tensor(hot)
+        orig_shape = self.shape
+        flat = self.data.flatten().astype(np.int32)
+        hot = np.zeros((flat.size, classes))
+        hot[np.arange(flat.size), flat]=1
+        return Tensor(hot.reshape((*orig_shape, classes)))
     def softmax(self, axis=-1):# subtract max to prevent overflow, softmax has shift invariance
         e = (self - Tensor(self.data.max(axis=axis, keepdims=True))).exp()
         return e / e.sum(axis=axis)
     def log_softmax(self):
-        m = Tensor(self.data.max(axis=1, keepdims=True))
+        m = Tensor(self.data.max(axis=-1, keepdims=True))
         shifted = self - m
-        sl =  (shifted).exp().sum(axis=1).log()
+        sl =  (shifted).exp().sum(axis=-1).log()
         return shifted - sl
     def sparse_categorical_crossentropy(self, y):
-        return -((y.one_hot(self.shape[1]) * self.log_softmax()).sum(axis=1).mean())
+        return -((y.one_hot(self.shape[-1]) * self.log_softmax()).sum(axis=-1).mean())
     def dropout(self, p=0.5):
         # Paper: https://jmlr.org/papers/v15/srivastava14a.html
         mask = (np.random.uniform(size=self.shape) > p).astype(np.float32) / (1.0 - p)
         return Tensor(self.data * mask, parents=(self,), local_grads=(lambda g: g * mask,))
     # https://arxiv.org/pdf/1706.03762v7
-    def scaled_dot_product_attention(self, k, v): # (q, k, v) <- (batch, n_heads, seq, head_dim)
+    def scaled_dot_product_attention(self, k, v, causal_mask=False): # (q, k, v) <- (batch, n_heads, seq, head_dim)
+        seq_len = self.shape[2]
         scale = Tensor(np.array(1.0 / np.sqrt(k.shape[-1])), requires_grad=False)
         scores = (self @ k.transpose(2, 3)) * scale # (batch, n_heads, seq, seq)
+        if causal_mask: # Dont allow tokens to 'look' at future tokens
+            mask = np.triu(np.full((seq_len, seq_len), -np.inf), k=1)
+            scores = scores + Tensor(mask, requires_grad=False)
         attn = scores.softmax() # (batch, n_heads, seq, seq)
         return attn @ v # (batch, n_heads, seq, head_dim)
 

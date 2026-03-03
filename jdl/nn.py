@@ -3,6 +3,7 @@ from jdl.tensor import Tensor
 import numpy as np
 from typing import List, Tuple
 
+
 def get_model_params(model):
     params = []
     for _, value in vars(model).items():
@@ -10,12 +11,29 @@ def get_model_params(model):
     return params
 
 # --- NN Layers ---
+class MultiHeadAttention:
+    def __init__(self, dim, n_heads):
+        self.fused_qkv = Linear(dim, dim*3)
+        self.proj = Linear(dim, dim)
+        self.dim = dim
+        self.n_heads = n_heads
+        self.head_dim = dim // n_heads
+    def params(self): return *self.fused_qkv.params(), *self.proj.params()
+    def __call__(self, x, causal): # (batch, seq_len, dim)
+        bchsz, seqln = x.shape[:2]
+        xqkv = self.fused_qkv(x).reshape((bchsz, seqln, 3, self.n_heads, self.head_dim))
+        q = xqkv[:, :, 0, :, :].transpose(1, 2)
+        k = xqkv[:, :, 1, :, :].transpose(1, 2)
+        v = xqkv[:, :, 2, :, :].transpose(1, 2)
+        attn = q.scaled_dot_product_attention(k, v, causal_mask=causal).transpose(2, 1)
+        return self.proj(attn.reshape((bchsz, seqln, self.dim)))
+
 class Embedding:
     def __init__(self, vocab_size, embed_size):
         self.weight = Tensor(np.random.uniform(-1, 1, (vocab_size, embed_size)))
-    def params(self): return (self.weight)
+    def params(self): return self.weight,
     def __call__(self, indices): # indices (batch, seq_len)
-        return [Tensor(f) for f in self.weight.data[indices]] # (batch, seq_len, embed_dim)
+        return self.weight[indices]
 
 class LSTM:
     def __init__(self, input_size, hidden_size):
@@ -91,8 +109,10 @@ class Linear:
         self.bias = Tensor(np.zeros(outputs))
     def params(self): return self.weights, self.bias
     def __call__(self, x: Tensor):
+        orig_shape = x.shape[:-1]
         x = x.reshape((-1, self.shape[0]))
-        return x @ self.weights + self.bias
+        out = x @ self.weights + self.bias
+        return out.reshape((*orig_shape, self.shape[1]))
 
 # --- Optimizers ---
 class Optimizer:

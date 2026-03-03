@@ -3,6 +3,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import numpy as np
+from tqdm import tqdm
 from jdl import Tensor
 from jdl.nn import Linear, LayerNorm, Embedding, MultiHeadAttention, ADAM
 
@@ -63,6 +64,8 @@ text = open("datasets/dostoevsky.txt").read()
 chars = sorted(set(text))
 vocab_size = len(chars)
 
+print("Vocab:", chars)
+
 char_to_idx = {c: i for i, c in enumerate(chars)}
 idx_to_char = {i: c for c, i in char_to_idx.items()}
 encoder = lambda s: [char_to_idx[c] for c in s]
@@ -82,7 +85,7 @@ def get_batch(batch_size, context_len):
     y = np.stack([data[i+1:i+context_len+1] for i in starts])
     return x, Tensor(y)
 
-for step in range(num_steps):
+for step in tqdm(range(num_steps), desc="Training"):
     optimizer.zero()
     x, y = get_batch(batch_size=32, context_len=64)
     logits = model(x)
@@ -90,8 +93,7 @@ for step in range(num_steps):
     optimizer.step()
 
     if step % print_every == 0:
-        print(f"step {step:5d} | loss {l.flatten().mean().data[0]}")
+        tqdm.write(f"step {step:5d} | loss {l.flatten().mean().data[0]:.4f}")
         prompt = np.array([[char_to_idx['\n']]])
         generated = model.generate(prompt, max_new_tokens=100)
-        print(decoder(generated.flatten()))
-        #print(f"Sample: {decoder(generated[0])[:100]}")
+        tqdm.write(f"Sample: {decoder(generated.flatten())}")

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Required, Union, Tuple
+from typing import Union, Tuple
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
 
@@ -213,12 +213,18 @@ class Tensor:
 
     def _toposort(self):
         topo, visited = [], set()
-        def dfs(node):
-            if node in visited or not node._requires_grad: return
+        stack = [(self, False)]
+        while stack:
+            node, processed = stack.pop()
+            if not node._requires_grad: continue
+            if processed:
+                topo.append(node)
+                continue
+            if node in visited: continue
             visited.add(node)
-            for n in node._parents: dfs(n)
-            topo.append(node)
-        dfs(self)
+            stack.append((node, True))
+            for p in node._parents:
+                stack.append((p, False))
         return topo
 
     @staticmethod

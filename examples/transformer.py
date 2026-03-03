@@ -5,7 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import numpy as np
 from tqdm import tqdm
 from jdl import Tensor
-from jdl.nn import Linear, LayerNorm, Embedding, MultiHeadAttention, ADAM
+from jdl.nn import Linear, RMSNorm, Embedding, MultiHeadAttention, ADAM
 
 class FeedForward:
     def __init__(self, dim, hidden_dim):
@@ -19,30 +19,26 @@ class TransformerBlock:
     def __init__(self, dim, n_heads):
         self.attn = MultiHeadAttention(dim, n_heads)
         self.ff = FeedForward(dim, 4*dim)
-        self.attn_norm = LayerNorm(dim)
-        self.ff_norm = LayerNorm(dim)
+        self.attn_norm = RMSNorm(dim)
+        self.ff_norm = RMSNorm(dim)
     def params(self): return *self.attn_norm.params(), *self.ff_norm.params(), *self.attn.params(), *self.ff.params()
     def __call__(self, x, causal=False, training=True):
         h = x + self.attn(self.attn_norm(x), causal=causal, training=training).dropout(0.1, training=training)     # Residual normalized attn  (batch, seqln, dims)
         return h + self.ff(self.ff_norm(h)).dropout(0.1, training=training)    # Residual normalized positionwise-FF
 
 
-# Transformer Decoder
-
-# Why is this considered just a decoder and not an encoder?
-# - pure self attention
-# - normal architecture;
-# 
+# Generative Transformer Decoder
+# - attention layers all self attention and causal masked
 class NanoGPT:
     def __init__(self, vocab_size, dim, n_heads, n_layers, max_context=512):
         self.tok_emb = Embedding(vocab_size, dim)
         self.pos_emb = Embedding(max_context, dim)
         self.blocks = [TransformerBlock(dim, n_heads) for _ in range(n_layers)]
-        self.ln_f = LayerNorm(dim)
+        self.ln_f = RMSNorm(dim)
         self.lm_head = Linear(dim, vocab_size)
         self.max_context = max_context
     def __call__(self, tokens, training=True): # (batch_size, seq_len)
-        bchsz, seq_len = tokens.shape
+        _, seq_len = tokens.shape
         # Embed tokens + positions
         tok_emb = self.tok_emb(tokens)
         pos_emb = self.pos_emb(range(seq_len))

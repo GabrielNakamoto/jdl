@@ -11,6 +11,15 @@ def get_model_params(model):
     return params
 
 # --- NN Layers ---
+class RMSNorm:
+    def __init__(self, dim):
+        self.weight = Tensor(np.ones(dim))
+    def params(self): return self.weight,
+    def __call__(self, x):
+        ms = (x ** 2).mean(axis=-1)
+        rms = (ms + 1e-5).sqrt()
+        return x / rms * self.weight
+
 class MultiHeadAttention:
     def __init__(self, dim, n_heads):
         self.fused_qkv = Linear(dim, dim*3)

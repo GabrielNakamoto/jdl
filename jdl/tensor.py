@@ -85,7 +85,18 @@ class Tensor:
     # --- Activation Functions ---
     def relu(self): return Tensor(np.maximum(self.data, 0), parents=(self,), local_grads=(lambda g: g * np.where(self.data > 0, 1, 0),))
     # https://arxiv.org/pdf/1606.08415
-    def gelu(self): return 0.5 * self * (1 + (np.sqrt(2.0 / np.pi) * (self + 0.044715 * (self ** 3))).tanh())
+    def gelu(self):
+        # Fused GELU: single forward pass, custom backward (avoids ~8 intermediate Tensors)
+        x = self.data
+        c = np.sqrt(2.0 / np.pi)
+        inner = c * (x + 0.044715 * x ** 3)
+        t = np.tanh(inner)
+        out = 0.5 * x * (1 + t)
+        def grad(g):
+            sech2 = 1 - t ** 2  # derivative of tanh
+            d_inner = c * (1 + 0.134145 * x ** 2)  # 0.134145 = 3 * 0.044715
+            return g * (0.5 * (1 + t) + 0.5 * x * d_inner * sech2)
+        return Tensor(out, parents=(self,), local_grads=(grad,))
     def sigmoid(self):
         s = 1.0 / (1.0 + np.exp(-self.data))
         return Tensor(s, parents=(self,), local_grads=(lambda g: g * s * (1 - s),))
@@ -122,14 +133,14 @@ class Tensor:
         mask = (np.random.uniform(size=self.shape) > p).astype(np.float32) / (1.0 - p)
         return Tensor(self.data * mask, parents=(self,), local_grads=(lambda g: g * mask,))
     # https://arxiv.org/pdf/1706.03762v7
-    def scaled_dot_product_attention(self, k, v, causal_mask=False, training=True): # (q, k, v) <- (batch, n_heads, seq, head_dim)
+    def scaled_dot_product_attention(self, k, v, causal_mask=False): # (q, k, v) <- (batch, n_heads, seq, head_dim)
         seq_len = self.shape[2]
         scale = Tensor(np.array(1.0 / np.sqrt(k.shape[-1])), requires_grad=False)
         scores = (self @ k.transpose(2, 3)) * scale # (batch, n_heads, seq, seq)
         if causal_mask: # Dont allow tokens to 'look' at future tokens
             mask = np.triu(np.full((seq_len, seq_len), -1e9), k=1)
             scores = scores + Tensor(mask, requires_grad=False)
-        attn = scores.dropout(0.1, training=training).softmax() # (batch, n_heads, seq, seq)
+        attn = scores.softmax() # (batch, n_heads, seq, seq)
         return attn @ v # (batch, n_heads, seq, head_dim)
 
     # --- CNN/Pooling ---

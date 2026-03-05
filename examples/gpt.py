@@ -26,7 +26,6 @@ class TransformerBlock:
         h = x + self.attn(self.attn_norm(x), causal=causal)     # Residual normalized attn  (batch, seqln, dims)
         return h + self.ff(self.ff_norm(h))    # Residual normalized positionwise-FF
 
-
 # Generative Transformer Decoder
 # - attention layers all self attention and causal masked
 class NanoGPT:

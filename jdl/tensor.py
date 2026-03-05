@@ -57,6 +57,14 @@ class Tensor:
     def __rtruediv__(self, other): return other * (self**-1)
 
     # --- Data Access ---
+    def split(self, sizes, axis=0):
+        indices = np.cumsum([0] + list(sizes))
+        results = []
+        for i in range(len(indices) - 1):
+            idx = [slice(None)] * self.data.ndim         #[:, :, ...]
+            idx[axis] = slice(indices[i], indices[i + 1])#[sz:sz+offset]
+            results.append(self[tuple(idx)])
+        return results
     def __getitem__(self, idx):
         def grad(g):
             grad = np.zeros_like(self.data)

@@ -31,9 +31,8 @@ class MultiHeadAttention:
     def __call__(self, x, causal): # (batch, seq_len, dim)
         bchsz, seqln = x.shape[:2]
         xqkv = self.fused_qkv(x).reshape((bchsz, seqln, 3, self.n_heads, self.head_dim))
-        q = xqkv[:, :, 0, :, :].transpose(1, 2)
-        k = xqkv[:, :, 1, :, :].transpose(1, 2)
-        v = xqkv[:, :, 2, :, :].transpose(1, 2)
+        getf = lambda n: xqkv[:,:,n].transpose(1,2)
+        q, k, v = getf(0), getf(1), getf(2)
         attn = q.scaled_dot_product_attention(k, v, causal_mask=causal).transpose(2, 1)
         return self.proj(attn.reshape((bchsz, seqln, self.dim)))
 
